@@ -54,6 +54,9 @@ class bp_connection_manager {
    uint32_t               pending_schedule_version = 0;
    uint32_t               active_schedule_version  = 0;
 
+   // when leaving bp gossip group, set to false to prevent reconnecting
+   std::atomic<bool>      connect_bp_gossip_peers = true;
+
    fc::mutex                     mtx;
    gossip_buffer_initial_factory initial_gossip_msg_factory GUARDED_BY(mtx);
    name_set_t                    active_bps GUARDED_BY(mtx);
@@ -255,6 +258,7 @@ public:
                }
             }
          } else {
+            connect_bp_gossip_peers = false;
             fc_wlog(self()->get_logger(), "On-chain peer-key not found for configured BP ${a}", ("a", bp_account));
          }
       }
@@ -505,6 +509,11 @@ public:
 
    // thread-safe
    void connect_to_active_bp_peers() {
+      if (!connect_bp_gossip_peers) {
+         fc_dlog(self()->get_logger(), "Not in active bp gossip group, not connecting to any bp peers");
+         return;
+      }
+
       // do not hold mutexes when calling resolve_and_connect which acquires connections mutex since other threads
       // can be holding connections mutex when trying to acquire these mutexes
       address_set_t addresses;
@@ -535,6 +544,10 @@ public:
                auto pending_connections = active_bp_accounts(schedule.producers);
 
                fc_dlog(self()->get_logger(), "pending_connections: ${c}", ("c", to_string(pending_connections)));
+
+               if (!pending_connections.empty()) {
+                  connect_bp_gossip_peers = true;
+               }
 
                // do not hold mutexes when calling resolve_and_connect which acquires connections mutex since other threads
                // can be holding connections mutex when trying to acquire these mutexes
@@ -591,6 +604,9 @@ public:
          bool disconnect_from_all = !config.my_bp_gossip_accounts.empty() &&
                                     std::all_of(config.my_bp_gossip_accounts.begin(), config.my_bp_gossip_accounts.end(),
                                                 [&](const auto& e) { return peers_to_drop.contains(e.first); });
+         if (disconnect_from_all) {
+            connect_bp_gossip_peers = false;
+         }
 
          address_set_t addresses = disconnect_from_all
                                    ? all_gossip_bp_addresses("disconnect")
