@@ -64,8 +64,22 @@ if(ENABLE_OC AND CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT WIN32)
       list(APPEND EOSIO_WASM_RUNTIMES eos-vm-oc)
       # EOS VM OC requires LLVM, but move the check up here to a central location so that the EosioTester.cmakes
       # can be created with the exact version found
+      # #578: LLVM 16+ exported CMake configs reference the imported target zstd::libzstd_shared (LLVM links
+      # zstd). Provide it from the system libzstd before find_package(LLVM); a no-op for older LLVM.
+      if(NOT TARGET zstd::libzstd_shared)
+         find_package(zstd QUIET CONFIG)
+         if(NOT TARGET zstd::libzstd_shared)
+            find_library(EOSVMOC_ZSTD_LIB zstd)
+            if(EOSVMOC_ZSTD_LIB)
+               add_library(zstd::libzstd_shared SHARED IMPORTED)
+               set_target_properties(zstd::libzstd_shared PROPERTIES IMPORTED_LOCATION "${EOSVMOC_ZSTD_LIB}")
+            endif()
+         endif()
+      endif()
       find_package(LLVM REQUIRED CONFIG)
-      if(LLVM_VERSION_MAJOR VERSION_LESS 7 OR LLVM_VERSION_MAJOR VERSION_GREATER_EQUAL 12)
+      # #578: support legacy ORCv1 (LLVM 7-11) AND modern RuntimeDyld path (LLVM 14+, for Ubuntu 24.04/26.04).
+      # 12-13 intentionally unsupported (transitional opaque-pointer era, untested for consensus codegen).
+      if(LLVM_VERSION_MAJOR VERSION_LESS 7 OR (LLVM_VERSION_MAJOR VERSION_GREATER_EQUAL 12 AND LLVM_VERSION_MAJOR VERSION_LESS 14))
 	      message(FATAL_ERROR "Spring requires an LLVM version 7 through 11")
       endif()
    endif()

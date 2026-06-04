@@ -19,14 +19,21 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
-#include "llvm/ExecutionEngine/Orc/CompileUtils.h"
+#include "llvm/ExecutionEngine/Orc/CompileUtils.h"   // SimpleCompiler (still present in modern LLVM)
+#if LLVM_VERSION_MAJOR >= 12
+// #578: ORCv1 was removed in LLVM 12. OC only uses ORC as an AOT harvester (NullResolver +
+// compile-and-copy-out-of-process), not a runtime JIT, so we bypass ORC entirely: SimpleCompiler
+// (Module -> object) + RuntimeDyld (link + harvest) directly.
+#include "llvm/ExecutionEngine/RuntimeDyld.h"
+#else
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/LambdaResolver.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/NullResolver.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
-
 #include "llvm/Analysis/Passes.h"
+#endif
+
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
@@ -44,13 +51,18 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/TargetSelect.h"
+#if LLVM_VERSION_MAJOR >= 12
+#include "llvm/TargetParser/Host.h"   // moved from llvm/Support/Host.h
+#else
 #include "llvm/Support/Host.h"
+#endif
 #include "llvm/Support/DynamicLibrary.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Utils.h"
 #include <memory>
+#include <set>
 #include <unistd.h>
 
 #include "llvm/Support/LEB128.h"
@@ -114,17 +126,22 @@ namespace LLVMJIT
 
 		void registerEHFrames(U8* addr, U64 loadAddr,uintptr_t numBytes) override {}
 		void deregisterEHFrames() override {}
-		
+
 		virtual bool needsToReserveAllocationSpace() override { return true; }
+#if LLVM_VERSION_MAJOR >= 16
+		// LLVM 16+ changed the alignment parameters to llvm::Align.
+		virtual void reserveAllocationSpace(uintptr_t numCodeBytes,llvm::Align codeAlignment,uintptr_t numReadOnlyBytes,llvm::Align readOnlyAlignment,uintptr_t numReadWriteBytes,llvm::Align readWriteAlignment) override {
+#else
 		virtual void reserveAllocationSpace(uintptr_t numCodeBytes,U32 codeAlignment,uintptr_t numReadOnlyBytes,U32 readOnlyAlignment,uintptr_t numReadWriteBytes,U32 readWriteAlignment) override {
+#endif
 			code = std::make_unique<std::vector<uint8_t>>(numCodeBytes + numReadOnlyBytes + numReadWriteBytes);
 			ptr = code->data();
 		}
-		virtual U8* allocateCodeSection(uintptr_t numBytes,U32 alignment,U32 sectionID,llvm::StringRef sectionName) override
+		virtual U8* allocateCodeSection(uintptr_t numBytes,unsigned alignment,unsigned sectionID,llvm::StringRef sectionName) override
 		{
 			return get_next_code_ptr(numBytes, alignment);
 		}
-		virtual U8* allocateDataSection(uintptr_t numBytes,U32 alignment,U32 sectionID,llvm::StringRef SectionName,bool isReadOnly) override
+		virtual U8* allocateDataSection(uintptr_t numBytes,unsigned alignment,unsigned sectionID,llvm::StringRef SectionName,bool isReadOnly) override
 		{
 			if(SectionName == ".eh_frame") {
 				dumpster.resize(numBytes);
@@ -142,6 +159,22 @@ namespace LLVMJIT
 			code->resize(ptr - code->data());
 			return true;
 		}
+
+#if LLVM_VERSION_MAJOR >= 12
+		// #578 / consensus safety: OC's emitted code is required to be SELF-CONTAINED — intrinsics and
+		// host calls are reached at runtime through OC's control block (running_code_base + GS-segment
+		// offsets), never through the dynamic linker. The legacy path used llvm::orc::NullResolver to
+		// enforce "no external symbols". We preserve that here: returning 0 makes RuntimeDyld fail LOUDLY
+		// (hasError()) if LLVM codegen ever synthesizes an external symbol (e.g. memcpy/memset for a large
+		// struct copy) instead of silently baking THIS (compile) process's libc address into a position-
+		// independent blob that is later mmap()'d and executed in a DIFFERENT process. Any name reaching
+		// here is recorded so the caller can surface it.
+		uint64_t getSymbolAddress(const std::string& name) override {
+			requested_external_symbols.insert(name);
+			return 0;
+		}
+		std::set<std::string> requested_external_symbols;
+#endif
 
 		std::unique_ptr<std::vector<uint8_t>> code;
 		uint8_t* ptr;
@@ -167,6 +200,9 @@ namespace LLVMJIT
 	// The JIT compilation unit for a WebAssembly module instance.
 	struct JITModule
 	{
+#if LLVM_VERSION_MAJOR >= 12
+		JITModule() {}
+#else
 		JITModule() {
 			objectLayer = std::make_unique<llvm::orc::LegacyRTDyldObjectLinkingLayer>(ES,[this](llvm::orc::VModuleKey K) {
 									return llvm::orc::LegacyRTDyldObjectLinkingLayer::Resources{
@@ -205,6 +241,7 @@ namespace LLVMJIT
 			objectLayer->setProcessAllSections(true);
 			compileLayer = std::make_unique<CompileLayer>(*objectLayer,llvm::orc::SimpleCompiler(*targetMachine));
 		}
+#endif
 
 		void compile(llvm::Module* llvmModule);
 
@@ -217,12 +254,14 @@ namespace LLVMJIT
 		~JITModule()
 		{
 		}
+#if LLVM_VERSION_MAJOR < 12
 	private:
 		typedef llvm::orc::LegacyIRCompileLayer<llvm::orc::LegacyRTDyldObjectLinkingLayer, llvm::orc::SimpleCompiler> CompileLayer;
 
 		llvm::orc::ExecutionSession ES;
 		std::unique_ptr<llvm::orc::LegacyRTDyldObjectLinkingLayer> objectLayer;
 		std::unique_ptr<CompileLayer> compileLayer;
+#endif
 	};
 
 	static Uptr printedModuleId = 0;
@@ -231,7 +270,11 @@ namespace LLVMJIT
 	{
 		std::error_code errorCode;
 		std::string augmentedFilename = std::string(filename) + std::to_string(printedModuleId++) + ".ll";
+#if LLVM_VERSION_MAJOR >= 12
+		llvm::raw_fd_ostream dumpFileStream(augmentedFilename,errorCode,llvm::sys::fs::OF_Text);
+#else
 		llvm::raw_fd_ostream dumpFileStream(augmentedFilename,errorCode,llvm::sys::fs::OpenFlags::F_Text);
+#endif
 		llvmModule->print(dumpFileStream,nullptr);
 		///Log::printf(Log::Category::debug,"Dumped LLVM module to: %s\n",augmentedFilename.c_str());
 	}
@@ -256,8 +299,12 @@ namespace LLVMJIT
 		fpm->add(llvm::createPromoteMemoryToRegisterPass());
 		fpm->add(llvm::createInstructionCombiningPass());
 		fpm->add(llvm::createCFGSimplificationPass());
+#if LLVM_VERSION_MAJOR < 12
+		// createJumpThreadingPass removed in LLVM 18; createConstantPropagationPass removed in LLVM 12
+		// (its work is subsumed by instcombine). Dropping them does not change codegen semantics.
 		fpm->add(llvm::createJumpThreadingPass());
 		fpm->add(llvm::createConstantPropagationPass());
+#endif
 		fpm->doInitialization();
 
 		for(auto functionIt = llvmModule->begin();functionIt != llvmModule->end();++functionIt)
@@ -266,12 +313,77 @@ namespace LLVMJIT
 
 		if(DUMP_OPTIMIZED_MODULE) { printModule(llvmModule,"llvmOptimizedDump"); }
 
+#if LLVM_VERSION_MAJOR >= 12
+		// Take ownership of the module so it is freed once compiled.
+		std::unique_ptr<llvm::Module> moduleOwner(llvmModule);
+
+		// (1) Compile the module to an in-memory relocatable object file.
+		llvm::orc::SimpleCompiler compiler(*targetMachine);
+		auto objOrErr = compiler(*llvmModule);
+		if(!objOrErr)
+			Errors::fatalf("EOS VM OC failed to compile module to an object file\n");
+		std::unique_ptr<llvm::MemoryBuffer> objBuffer = std::move(*objOrErr);
+
+		auto objFileOrErr = llvm::object::ObjectFile::createObjectFile(objBuffer->getMemBufferRef());
+		if(!objFileOrErr)
+			Errors::fatalf("EOS VM OC failed to parse compiled object file\n");
+		std::unique_ptr<llvm::object::ObjectFile> objFile = std::move(*objFileOrErr);
+
+		// (2) Link it ourselves with RuntimeDyld directly (bypassing ORC). The UnitMemoryManager doubles
+		//     as the JITSymbolResolver; its getSymbolAddress() returns 0 for everything (NullResolver
+		//     semantics) so an unexpected external symbol fails loudly instead of producing a non-self-
+		//     contained blob.
+		llvm::RuntimeDyld dyld(*unitmemorymanager, *unitmemorymanager);
+		dyld.setProcessAllSections(true);   // materialize even unreferenced sections (e.g. .stack_sizes)
+		std::unique_ptr<llvm::RuntimeDyld::LoadedObjectInfo> loadedObjInfo = dyld.loadObject(*objFile);
+		dyld.resolveRelocations();
+		unitmemorymanager->finalizeMemory();
+
+		if(dyld.hasError())
+			Errors::fatalf("EOS VM OC RuntimeDyld link error: %s\n", dyld.getErrorString().str().c_str());
+		if(!unitmemorymanager->requested_external_symbols.empty()) {
+			// Consensus-safety gate: the harvested blob must be self-contained. If we get here, LLVM
+			// codegen introduced an external dependency that the legacy NullResolver design forbids.
+			std::string syms;
+			for(const auto& s : unitmemorymanager->requested_external_symbols) { syms += s; syms += ' '; }
+			Errors::fatalf("EOS VM OC produced code with unresolved external symbol(s): %s\n", syms.c_str());
+		}
+
+		// (3) Harvest function/table offsets from the loaded object (same logic the ORC NotifyFinalized
+		//     callback performed in the legacy path).
+		for(auto symbolSizePair : llvm::object::computeSymbolSizes(*objFile)) {
+			auto symbol = symbolSizePair.first;
+			auto name = symbol.getName();
+			auto address = symbol.getAddress();
+			if(symbol.getType() && symbol.getType().get() == llvm::object::SymbolRef::ST_Function && name && address) {
+				Uptr loadedAddress = Uptr(*address);
+				auto symbolSection = symbol.getSection();
+				if(symbolSection)
+					loadedAddress += (Uptr)loadedObjInfo->getSectionLoadAddress(*symbolSection.get());
+				Uptr functionDefIndex;
+				if(getFunctionIndexFromExternalName(name->data(),functionDefIndex))
+					function_to_offsets[functionDefIndex] = loadedAddress-(uintptr_t)unitmemorymanager->code->data();
+#if PRINT_DISASSEMBLY
+				disassembleFunction((U8*)loadedAddress, symbolSizePair.second);
+#endif
+			} else if(symbol.getType() && symbol.getType().get() == llvm::object::SymbolRef::ST_Data && name && *name == getTableSymbolName()) {
+				Uptr loadedAddress = Uptr(*address);
+				auto symbolSection = symbol.getSection();
+				if(symbolSection)
+					loadedAddress += (Uptr)loadedObjInfo->getSectionLoadAddress(*symbolSection.get());
+				table_offset = loadedAddress-(uintptr_t)unitmemorymanager->code->data();
+			}
+		}
+
+		final_pic_code = std::move(*unitmemorymanager->code);
+#else
 		llvm::orc::VModuleKey K = ES.allocateVModule();
 		std::unique_ptr<llvm::Module> mod(llvmModule);
 		WAVM_ASSERT_THROW(!compileLayer->addModule(K, std::move(mod)));
 		WAVM_ASSERT_THROW(!compileLayer->emitAndFinalize(K));
 
 		final_pic_code = std::move(*unitmemorymanager->code);
+#endif
 	}
 
 	instantiated_code instantiateModule(const IR::Module& module, uint64_t stack_size_limit, size_t generated_code_size_limit)
@@ -326,6 +438,13 @@ namespace LLVMJIT
 		}
 		if(num_functions_stack_size_found != module.functions.defs.size())
 			_exit(1);
+#if LLVM_VERSION_MAJOR >= 12
+		// #578 consensus-safety gate (symmetric to the stack-size count check above): the legacy code had
+		// NO assertion that every defined function's machine code was actually harvested. A compiler change
+		// could silently drop or rename a symbol; catch it here rather than executing a half-populated table.
+		if(jitModule->function_to_offsets.size() != module.functions.defs.size())
+			_exit(1);
+#endif
 		if(jitModule->final_pic_code.size() >= generated_code_size_limit)
 			_exit(1);
 
