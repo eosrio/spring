@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM ubuntu:26.04
 ENV TZ="America/New_York"
 ENV DEBIAN_FRONTEND=noninteractive
@@ -13,13 +14,14 @@ RUN apt-get update && apt-get upgrade -y && \
                        file                 \
                        zlib1g-dev           \
                        zstd
-# NOTE: llvm-11-dev is intentionally omitted — Ubuntu 26.04 packages only
-# llvm-17..22, and Spring's EOS VM OC needs LLVM 7-11 (ORCv1, removed in 12).
-# Native builds on this platform must therefore configure with -DENABLE_OC=OFF
-# (eos-vm + eos-vm-jit runtimes; no OC tier-up) until ORCv1->ORCv2 (#578) lands.
-# A full-OC binary that RUNS on 26.04 is available via the pinned reproducible build.
-#
-# Ubuntu 26.04 ships cmake 4.2, which removed compatibility with
-# cmake_minimum_required < 3.5 (the vendored boost submodule uses pre-3.5
-# minimums). Configure with: -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-# Verified 2026-06: builds clean on gcc 15; 693/693 jit unit tests pass.
+
+# Ubuntu 26.04 packages only llvm-17..22, but Spring's EOS VM OC needs LLVM 7-11
+# (ORCv1, removed in LLVM 12), so OC is disabled here until ORCv1->ORCv2 (#578).
+# Also: 26.04 ships cmake 4.2, which removed compatibility with the pre-3.5
+# cmake_minimum_required used by the vendored boost submodule, so we pin the
+# policy minimum. A full-OC binary that RUNS on 26.04 comes from the pinned build.
+ENV SPRING_PLATFORM_HAS_EXTRAS_CMAKE=1
+COPY <<-EOF /extras.cmake
+set(ENABLE_OC OFF CACHE BOOL "" FORCE)
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
+EOF
