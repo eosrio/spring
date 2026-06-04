@@ -9,17 +9,19 @@ RUN apt-get update && apt-get upgrade -y && \
                        jq                   \
                        libcurl4-openssl-dev \
                        libgmp-dev           \
+                       libzstd-dev          \
+                       llvm-18-dev          \
                        ninja-build          \
                        python3-numpy        \
                        file                 \
                        zlib1g-dev           \
                        zstd
 
-# Ubuntu 24.04 packages only llvm-14..20, but Spring's EOS VM OC needs LLVM 7-11
-# (ORCv1, removed in LLVM 12), so OC is disabled here (eos-vm + eos-vm-jit only)
-# until ORCv1->ORCv2 modernization (#578) lands. A full-OC binary that RUNS on
-# 24.04 is available via the pinned reproducible build (glibc forward-compat).
+# #578: EOS VM OC is now built against Ubuntu 24.04's system LLVM 18 (llvm-18-dev).
+# (Before #578, 24.04 had no llvm-11 package so OC had to be disabled here.)
+# libzstd-dev satisfies LLVM 18's zstd::libzstd_shared imported target.
+# ENABLE_OC defaults ON; we only point find_package(LLVM) at llvm-18 here.
 ENV SPRING_PLATFORM_HAS_EXTRAS_CMAKE=1
 COPY <<-EOF /extras.cmake
-set(ENABLE_OC OFF CACHE BOOL "" FORCE)
+set(LLVM_DIR "/usr/lib/llvm-18/lib/cmake/llvm" CACHE STRING "")
 EOF
