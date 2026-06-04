@@ -37,7 +37,10 @@ RUN apt-get update && apt-get -y upgrade && DEBIAN_FRONTEND=noninteractive apt-g
                                                                                               ;
 
 ARG _SPRING_CLANG_VERSION=18.1.8
-ARG _SPRING_LLVM_VERSION=11.1.0
+# #578: OC now builds against modern LLVM. Pin the OC LLVM to match the toolchain clang (18.1.8)
+# so OC uses LLVM 18 in the reproducible build. (Dropping this 2nd LLVM entirely — building OC
+# against the toolchain's own LLVM — is a follow-up that needs the toolchain built RTTI-on.)
+ARG _SPRING_LLVM_VERSION=18.1.8
 ARG _SPRING_CMAKE_VERSION=3.27.6
 
 ADD https://github.com/llvm/llvm-project/releases/download/llvmorg-${_SPRING_CLANG_VERSION}/llvm-project-${_SPRING_CLANG_VERSION}.src.tar.xz     \
@@ -98,7 +101,7 @@ ENV CMAKE_TOOLCHAIN_FILE=/pinnedtoolchain/pinnedtoolchain.cmake
 
 RUN tar xf llvm-project-${_SPRING_LLVM_VERSION}.src.tar.xz && \
     cmake -S llvm-project-${_SPRING_LLVM_VERSION}.src/llvm -B build-pinllvm -GNinja -DCMAKE_BUILD_TYPE=Release -DLLVM_TARGETS_TO_BUILD=host -DLLVM_BUILD_TOOLS=Off \
-                                                                                  -DLLVM_ENABLE_RTTI=On -DLLVM_ENABLE_TERMINFO=Off -DLLVM_ENABLE_PIC=Off \
+                                                                                  -DLLVM_ENABLE_RTTI=On -DLLVM_ENABLE_TERMINFO=Off -DLLVM_ENABLE_PIC=Off -DLLVM_ENABLE_ZSTD=Off \
                                                                                   -DCMAKE_INSTALL_PREFIX=/pinnedtoolchain/pinllvm && \
     cmake --build build-pinllvm -t install && \
     rm -rf build* llvm*
