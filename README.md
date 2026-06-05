@@ -33,11 +33,7 @@ The pinned reproducible build (`.deb` package) is built once and installs and ru
 
 Other Unix derivatives such as macOS are tended to on a best-effort basis and may not be full featured. If you aren't using Ubuntu, please visit the "[Build Unsupported OS](./docs/00_install/01_build-from-source/00_build-unsupported-os.md)" page to explore your options.
 
-If you are running an unsupported Ubuntu derivative, such as Linux Mint, you can find the version of Ubuntu your distribution was based on by using this command:
-```bash
-cat /etc/upstream-release/lsb-release
-```
-Your best bet is to follow the instructions for your Ubuntu base, but we make no guarantees.
+Ubuntu derivatives such as Linux Mint generally work by following the instructions for their Ubuntu base (`cat /etc/upstream-release/lsb-release` to find it), but we make no guarantees.
 
 ## Binary Installation
 This is the fastest way to get started. From the [latest release](https://github.com/eosrio/spring/releases/latest) page, download a binary for one of our [supported operating systems](#supported-operating-systems), or visit the [release tags](https://github.com/eosrio/spring/releases) page to download a binary for a specific version of Spring.
@@ -47,7 +43,7 @@ Once you have an `antelope-spring_*.deb` file downloaded for your version of Ubu
 sudo apt-get update
 sudo apt-get install -y ~/Downloads/antelope-spring_*.deb
 ```
-Your download path may vary. If you are in an Ubuntu docker container, omit `sudo` because you run as `root` by default.
+Adjust the path as needed; omit `sudo` inside a Docker container.
 
 Finally, verify Spring was installed correctly:
 ```bash
@@ -85,24 +81,10 @@ Minimum compiler version by Ubuntu release:
 - Ubuntu 26.04: GCC 15 (default)
 
 ### Step 1 - Clone
-If you don't have the Spring repo cloned to your computer yet, [open a terminal](https://itsfoss.com/open-terminal-ubuntu) and navigate to the folder where you want to clone the Spring repository:
-```bash
-cd ~/Downloads
-```
-Clone Spring using either HTTPS...
+Clone the repository with submodules (HTTPS or SSH), then enter it:
 ```bash
 git clone --recursive https://github.com/eosrio/spring.git
-```
-...or SSH:
-```bash
-git clone --recursive git@github.com:eosrio/spring.git
-```
-
-> ℹ️ **HTTPS vs. SSH Clone** ℹ️  
-Both an HTTPS or SSH git clone will yield the same result - a folder named `spring` containing our source code. It doesn't matter which type you use.
-
-Navigate into that folder:
-```bash
+# or: git clone --recursive git@github.com:eosrio/spring.git
 cd spring
 ```
 
@@ -142,7 +124,7 @@ DOCKER_BUILDKIT=1 docker build --build-arg SPRING_BUILD_JOBS=4 -f tools/reproduc
 ```
 
 #### Unpinned Build
-The following instructions are valid for this branch. Other release branches may have different requirements, so ensure you follow the directions in the branch or release you intend to build. If you are in an Ubuntu docker container, omit `sudo` because you run as `root` by default.
+These instructions are for this branch; other release branches may differ, so follow the directions in the branch or release you intend to build.
 
 **Ubuntu 20.04 / 22.04** (these use the system LLVM 11):
 ```bash
