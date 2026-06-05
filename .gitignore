@@ -93,3 +93,9 @@ package-lock.json
 
 snapshots
 !unittests/snapshots
+
+.security
+
+# reproducible build artifacts dropped in the repo root by `docker build ... -o .`
+/antelope-spring*.deb
+/antelope-spring*.tar.*
