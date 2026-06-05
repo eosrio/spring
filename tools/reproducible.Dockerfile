@@ -37,16 +37,31 @@ RUN apt-get update && apt-get -y upgrade && DEBIAN_FRONTEND=noninteractive apt-g
                                                                                               ;
 
 ARG _SPRING_CLANG_VERSION=18.1.8
-# #578: OC now builds against modern LLVM. Pin the OC LLVM to match the toolchain clang (18.1.8)
-# so OC uses LLVM 18 in the reproducible build. (Dropping this 2nd LLVM entirely — building OC
-# against the toolchain's own LLVM — is a follow-up that needs the toolchain built RTTI-on.)
+# #578: OC now builds against modern LLVM. The OC LLVM ("pinllvm", built further down) is pinned to
+# the SAME release as the toolchain clang (18.1.8) so a single source tarball serves both builds.
+#
+# Why two LLVM builds — the toolchain's own LLVM CANNOT be reused for OC (verified empirically by
+# pointing OC's find_package(LLVM) at the toolchain LLVM and linking nodeos; it failed):
+#   1. libc++ ABI: the toolchain LLVM is compiled with Debian's system GCC + libstdc++ because it is
+#      built BEFORE CMAKE_TOOLCHAIN_FILE (below) switches everything to the pinned clang + libc++.
+#      Spring/OC link libc++ exclusively, so the toolchain LLVM's libstdc++-flavored static libs do
+#      not link into nodeos (undefined std::_Rb_tree_* / std::__throw_system_error). pinllvm is built
+#      WITH the pinned clang + libc++ (-stdlib=libc++), which is exactly why OC can link it.
+#   2. RTTI: the toolchain LLVM is RTTI-off (LLVM's default — note no -DLLVM_ENABLE_RTTI below in the
+#      toolchain build); OC links LLVM into the consensus library and needs RTTI-on (pinllvm sets it).
+# Truly eliminating the 2nd compile would require rebuilding the SHARED toolchain LLVM as libc++ +
+# RTTI-on, which re-baselines the released reproducible-build hash and hits a libc++ bootstrap
+# circularity — high risk for a stability-first fork, so we keep pinllvm. (PIC is NOT a factor: OC
+# sets its blob relocation model programmatically in LLVMJIT.cpp, so -DLLVM_ENABLE_PIC=Off on pinllvm
+# is only a host-library link detail and does not affect the bytes OC emits.)
 ARG _SPRING_LLVM_VERSION=18.1.8
 ARG _SPRING_CMAKE_VERSION=3.27.6
 
+# One LLVM source tarball serves BOTH the toolchain clang and the pinllvm/OC build: since #578 the
+# two are the same release (18.1.8). The pinllvm RUN below asserts the versions match before reusing
+# this download — to diverge them, restore a second tarball+sig pair here for ${_SPRING_LLVM_VERSION}.
 ADD https://github.com/llvm/llvm-project/releases/download/llvmorg-${_SPRING_CLANG_VERSION}/llvm-project-${_SPRING_CLANG_VERSION}.src.tar.xz     \
     https://github.com/llvm/llvm-project/releases/download/llvmorg-${_SPRING_CLANG_VERSION}/llvm-project-${_SPRING_CLANG_VERSION}.src.tar.xz.sig \
-    https://github.com/llvm/llvm-project/releases/download/llvmorg-${_SPRING_LLVM_VERSION}/llvm-project-${_SPRING_LLVM_VERSION}.src.tar.xz       \
-    https://github.com/llvm/llvm-project/releases/download/llvmorg-${_SPRING_LLVM_VERSION}/llvm-project-${_SPRING_LLVM_VERSION}.src.tar.xz.sig   \
     https://github.com/Kitware/CMake/releases/download/v${_SPRING_CMAKE_VERSION}/cmake-${_SPRING_CMAKE_VERSION}.tar.gz                           \
     https://github.com/Kitware/CMake/releases/download/v${_SPRING_CMAKE_VERSION}/cmake-${_SPRING_CMAKE_VERSION}-SHA-256.txt                      \
     https://github.com/Kitware/CMake/releases/download/v${_SPRING_CMAKE_VERSION}/cmake-${_SPRING_CMAKE_VERSION}-SHA-256.txt.asc                  \
@@ -99,7 +114,9 @@ COPY <<-"EOF" /pinnedtoolchain/pinnedtoolchain.cmake
 EOF
 ENV CMAKE_TOOLCHAIN_FILE=/pinnedtoolchain/pinnedtoolchain.cmake
 
-RUN tar xf llvm-project-${_SPRING_LLVM_VERSION}.src.tar.xz && \
+# pinllvm reuses the single LLVM tarball downloaded above, so its version must equal the toolchain's.
+RUN test "${_SPRING_CLANG_VERSION}" = "${_SPRING_LLVM_VERSION}" || { echo "ERROR: _SPRING_LLVM_VERSION (${_SPRING_LLVM_VERSION}) != _SPRING_CLANG_VERSION (${_SPRING_CLANG_VERSION}); restore the second LLVM tarball+sig in the ADD above to build OC against a different LLVM than the toolchain." >&2; exit 1; } && \
+    tar xf llvm-project-${_SPRING_LLVM_VERSION}.src.tar.xz && \
     cmake -S llvm-project-${_SPRING_LLVM_VERSION}.src/llvm -B build-pinllvm -GNinja -DCMAKE_BUILD_TYPE=Release -DLLVM_TARGETS_TO_BUILD=host -DLLVM_BUILD_TOOLS=Off \
                                                                                   -DLLVM_ENABLE_RTTI=On -DLLVM_ENABLE_TERMINFO=Off -DLLVM_ENABLE_PIC=Off -DLLVM_ENABLE_ZSTD=Off \
                                                                                   -DCMAKE_INSTALL_PREFIX=/pinnedtoolchain/pinllvm && \
