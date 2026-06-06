@@ -5,7 +5,10 @@ on:
     branches:
       - main
       - "release/*"
-  pull_request:
+  # NOTE: no `pull_request` trigger by design. This workflow runs on self-hosted
+  # runners, where auto-running PR code (especially from forks) is a security and
+  # cost risk. CI on a PR branch is a deliberate human action: a maintainer dispatches
+  # it via the "Run workflow" button or `gh workflow run build.yaml --ref <branch>`.
   workflow_dispatch:
     inputs:
       override-cdt:
