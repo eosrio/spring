@@ -15,6 +15,12 @@ const test_timeout = core.getInput('test-timeout', {required: true});
 const repo_name = process.env.GITHUB_REPOSITORY.split('/')[1];
 
 try {
+   // Defensively remove any leftover container from a prior/interrupted run. On a
+   // persistent self-hosted runner the Docker daemon survives between jobs, and the
+   // per-test containers below use fixed names with no --rm, so an orphan would block
+   // name reuse with "container name already in use". (ENF's ephemeral runners get a
+   // fresh daemon each job and never hit this.)
+   child_process.spawnSync("docker", ["rm", "-f", "base"], {stdio:"ignore"});
    if(child_process.spawnSync("docker", ["run", "--name", "base", "-v", `${process.cwd()}/build.tar.zst:/build.tar.zst`, "--workdir", `/__w/${repo_name}/${repo_name}`, container, "sh", "-c", "zstdcat /build.tar.zst | tar x"], {stdio:"inherit"}).status)
       throw new Error("Failed to create base container");
    if(child_process.spawnSync("docker", ["commit", "base", "baseimage"], {stdio:"inherit"}).status)
@@ -29,6 +35,8 @@ try {
 
    let subprocesses = [];
    tests.forEach(t => {
+      // Clear any orphaned container of this name before reusing it (see note above).
+      child_process.spawnSync("docker", ["rm", "-f", t.name], {stdio:"ignore"});
       subprocesses.push(new Promise(resolve => {
          child_process.spawn("docker", ["run", "--security-opt", "seccomp=unconfined", "-e", "GITHUB_ACTIONS=True", "--name", t.name, "--init", "baseimage", "bash", "-c", `cd build; ctest --output-on-failure -R '^${t.name}$' --timeout ${test_timeout}`], {stdio:"inherit"}).on('close', code => resolve(code));
       }));
