@@ -5,7 +5,10 @@ on:
     branches:
       - main
       - "release/*"
-  pull_request:
+  # NOTE: no `pull_request` trigger by design. This workflow runs on self-hosted
+  # runners, where auto-running PR code (especially from forks) is a security and
+  # cost risk. CI on a PR branch is a deliberate human action: a maintainer dispatches
+  # it via the "Run workflow" button or `gh workflow run build.yaml --ref <branch>`.
   workflow_dispatch:
     inputs:
       override-cdt:
@@ -85,7 +88,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [ubuntu20, ubuntu22, ubuntu24, ubuntu26, reproducible]
+        platform: [ubuntu22, ubuntu24, ubuntu26, reproducible]
     runs-on: ubuntu-latest
     container: ${{fromJSON(needs.platform-cache.outputs.platforms)[matrix.platform].image}}
     steps:
@@ -133,14 +136,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - cfg: {name: 'ubuntu20',      base: 'ubuntu20', builddir: 'ubuntu20'}
           - cfg: {name: 'ubuntu22',      base: 'ubuntu22', builddir: 'ubuntu22'}
           - cfg: {name: 'ubuntu24',      base: 'ubuntu24', builddir: 'ubuntu24'}
           - cfg: {name: 'ubuntu26',      base: 'ubuntu26', builddir: 'ubuntu26'}
           - cfg: {name: 'asserton',      base: 'asserton', builddir: 'asserton'}
           - cfg: {name: 'ubsan',         base: 'ubsan',    builddir: 'ubsan'}
           - cfg: {name: 'asan',          base: 'asan',     builddir: 'asan'}
-          - cfg: {name: 'ubuntu20repro', base: 'ubuntu20', builddir: 'reproducible'}
           - cfg: {name: 'ubuntu22repro', base: 'ubuntu22', builddir: 'reproducible'}
     runs-on: ["self-hosted", "enf-x86-hightier"]
     container:
@@ -181,13 +182,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - cfg: {name: 'ubuntu20',      base: 'ubuntu20', builddir: 'ubuntu20'}
           - cfg: {name: 'ubuntu22',      base: 'ubuntu22', builddir: 'ubuntu22'}
           - cfg: {name: 'ubuntu24',      base: 'ubuntu24', builddir: 'ubuntu24'}
           - cfg: {name: 'ubuntu26',      base: 'ubuntu26', builddir: 'ubuntu26'}
           - cfg: {name: 'asserton',      base: 'asserton', builddir: 'asserton'}
           - cfg: {name: 'ubsan',         base: 'ubsan',    builddir: 'ubsan'}
-          - cfg: {name: 'ubuntu20repro', base: 'ubuntu20', builddir: 'reproducible'}
           - cfg: {name: 'ubuntu22repro', base: 'ubuntu22', builddir: 'reproducible'}
     runs-on: ["self-hosted", "enf-x86-midtier"]
     steps:
@@ -224,13 +223,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - cfg: {name: 'ubuntu20',      base: 'ubuntu20', builddir: 'ubuntu20'}
           - cfg: {name: 'ubuntu22',      base: 'ubuntu22', builddir: 'ubuntu22'}
           - cfg: {name: 'ubuntu24',      base: 'ubuntu24', builddir: 'ubuntu24'}
           - cfg: {name: 'ubuntu26',      base: 'ubuntu26', builddir: 'ubuntu26'}
           - cfg: {name: 'asserton',      base: 'asserton', builddir: 'asserton'}
           - cfg: {name: 'ubsan',         base: 'ubsan',    builddir: 'ubsan'}
-          - cfg: {name: 'ubuntu20repro', base: 'ubuntu20', builddir: 'reproducible'}
           - cfg: {name: 'ubuntu22repro', base: 'ubuntu22', builddir: 'reproducible'}
     runs-on: ["self-hosted", "enf-x86-lowtier"]
     steps:
