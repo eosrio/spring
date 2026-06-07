@@ -39,18 +39,24 @@ try {
    // modest self-hosted runner and makes them fail en masse. Cap how many run at a time
    // (override with the CTEST_CONTAINER_CONCURRENCY env var; default 4). results[i] stays
    // aligned with tests[i] so the failure-log extraction below is unchanged.
-   const max_concurrency = Math.max(1, parseInt(process.env.CTEST_CONTAINER_CONCURRENCY, 10) || 4);
+   const parsed_concurrency = parseInt(process.env.CTEST_CONTAINER_CONCURRENCY, 10);
+   const max_concurrency = Number.isNaN(parsed_concurrency) ? 4 : Math.max(1, parsed_concurrency);
    console.log(`Running ${tests.length} '${tests_label}' test(s), up to ${max_concurrency} container(s) at a time`);
 
    const results = new Array(tests.length);
    let next_test = 0;
    async function run_worker() {
-      for(let i = next_test++; i < tests.length; i = next_test++) {
+      while(next_test < tests.length) {
+         const i = next_test++;
          const t = tests[i];
          // Clear any orphaned container of this name before reusing it (see note above).
          child_process.spawnSync("docker", ["rm", "-f", t.name], {stdio:"ignore"});
          results[i] = await new Promise(resolve => {
-            child_process.spawn("docker", ["run", "--security-opt", "seccomp=unconfined", "-e", "GITHUB_ACTIONS=True", "--name", t.name, "--init", "baseimage", "bash", "-c", `cd build; ctest --output-on-failure -R '^${t.name}$' --timeout ${test_timeout}`], {stdio:"inherit"}).on('close', code => resolve(code));
+            child_process.spawn("docker", ["run", "--security-opt", "seccomp=unconfined", "-e", "GITHUB_ACTIONS=True", "--name", t.name, "--init", "baseimage", "bash", "-c", `cd build; ctest --output-on-failure -R '^${t.name}$' --timeout ${test_timeout}`], {stdio:"inherit"})
+               .on('close', code => resolve(code))
+               // If docker can't even be spawned, 'close' may never fire — resolve as a
+               // failure so the pool doesn't hang and the test is reported as failed.
+               .on('error', err => { console.error(`Failed to spawn docker for ${t.name}: ${err.message}`); resolve(1); });
          });
       }
    }
