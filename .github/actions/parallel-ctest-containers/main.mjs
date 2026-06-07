@@ -33,16 +33,34 @@ try {
       throw new Error("Failed to discover tests with label")
    const tests = JSON.parse(test_query_result.stdout).tests;
 
-   let subprocesses = [];
-   tests.forEach(t => {
-      // Clear any orphaned container of this name before reusing it (see note above).
-      child_process.spawnSync("docker", ["rm", "-f", t.name], {stdio:"ignore"});
-      subprocesses.push(new Promise(resolve => {
-         child_process.spawn("docker", ["run", "--security-opt", "seccomp=unconfined", "-e", "GITHUB_ACTIONS=True", "--name", t.name, "--init", "baseimage", "bash", "-c", `cd build; ctest --output-on-failure -R '^${t.name}$' --timeout ${test_timeout}`], {stdio:"inherit"}).on('close', code => resolve(code));
-      }));
-   });
+   // Run the test containers with BOUNDED concurrency. The nonparallelizable_tests and
+   // long_running_tests suites are heavy multi-nodeos integration tests; launching one
+   // container per test all at once (the original behaviour) starves CPU/RAM/ports on a
+   // modest self-hosted runner and makes them fail en masse. Cap how many run at a time
+   // (override with the CTEST_CONTAINER_CONCURRENCY env var; default 4). results[i] stays
+   // aligned with tests[i] so the failure-log extraction below is unchanged.
+   const parsed_concurrency = parseInt(process.env.CTEST_CONTAINER_CONCURRENCY, 10);
+   const max_concurrency = Number.isNaN(parsed_concurrency) ? 4 : Math.max(1, parsed_concurrency);
+   console.log(`Running ${tests.length} '${tests_label}' test(s), up to ${max_concurrency} container(s) at a time`);
 
-   const results = await Promise.all(subprocesses);
+   const results = new Array(tests.length);
+   let next_test = 0;
+   async function run_worker() {
+      while(next_test < tests.length) {
+         const i = next_test++;
+         const t = tests[i];
+         // Clear any orphaned container of this name before reusing it (see note above).
+         child_process.spawnSync("docker", ["rm", "-f", t.name], {stdio:"ignore"});
+         results[i] = await new Promise(resolve => {
+            child_process.spawn("docker", ["run", "--security-opt", "seccomp=unconfined", "-e", "GITHUB_ACTIONS=True", "--name", t.name, "--init", "baseimage", "bash", "-c", `cd build; ctest --output-on-failure -R '^${t.name}$' --timeout ${test_timeout}`], {stdio:"inherit"})
+               .on('close', code => resolve(code))
+               // If docker can't even be spawned, 'close' may never fire — resolve as a
+               // failure so the pool doesn't hang and the test is reported as failed.
+               .on('error', err => { console.error(`Failed to spawn docker for ${t.name}: ${err.message}`); resolve(1); });
+         });
+      }
+   }
+   await Promise.all(Array.from({length: Math.min(max_concurrency, tests.length)}, run_worker));
 
    for(let i = 0; i < results.length; ++i) {
       if(results[i] === 0)
