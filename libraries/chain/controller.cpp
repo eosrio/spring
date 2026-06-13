@@ -3356,8 +3356,20 @@ struct controller_impl {
                   ilog("Interrupt of onblock ${bn}", ("bn", chain_head.block_num() + 1));
                   throw *onblock_trace->except;
                }
-               wlog("onblock ${block_num} is REJECTING: ${entire_trace}",
-                    ("block_num", chain_head.block_num() + 1)("entire_trace", onblock_trace));
+               // A failing onblock is deterministic and benign: the block still applies, the
+               // schedule/state change is simply dropped, and every node reproduces the same
+               // failure (e.g. the system contract proposing a producer schedule that the
+               // native intrinsic rejects). While syncing or replaying old blocks this would
+               // dump the full onblock trace at warn for every affected block, so only emit the
+               // warning when at/near head; downgrade to debug while catching up. (Uses the same
+               // "caught up" heuristic as update_peer_keys().)
+               if( fc::time_point::now() - when.to_time_point() < fc::minutes(5) ) {
+                  wlog("onblock ${block_num} is REJECTING: ${entire_trace}",
+                       ("block_num", chain_head.block_num() + 1)("entire_trace", onblock_trace));
+               } else {
+                  dlog("onblock ${block_num} is REJECTING: ${entire_trace}",
+                       ("block_num", chain_head.block_num() + 1)("entire_trace", onblock_trace));
+               }
             }
          } catch( const std::bad_alloc& e ) {
             elog( "on block transaction failed due to a std::bad_alloc" );
