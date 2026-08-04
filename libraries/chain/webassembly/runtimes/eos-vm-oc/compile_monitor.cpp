@@ -7,6 +7,7 @@
 #include <eosio/chain/webassembly/eos-vm-oc/compile_trampoline.hpp>
 #include <eosio/chain/webassembly/eos-vm-oc/code_cache.hpp>
 
+#include <eosio/chain/consensus_module_registry.hpp>
 #include <eosio/chain/exceptions.hpp>
 
 #include <boost/asio/local/datagram_protocol.hpp>
@@ -302,8 +303,10 @@ struct compile_monitor_trampoline {
 static compile_monitor_trampoline the_compile_monitor_trampoline;
 extern "C" int __real_main(int, char*[]);
 extern "C" int __wrap_main(int argc, char* argv[]) {
-
-
+   // The OC compiler processes are forked before nodeos enters its real main.
+   // Register module intrinsics first so the children inherit their intrinsic
+   // mappings. The later wasm_interface registration call is idempotent.
+   register_consensus_modules();
    the_compile_monitor_trampoline.start();
    return __real_main(argc, argv);
 }
