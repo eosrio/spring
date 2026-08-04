@@ -16,6 +16,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 using namespace eosio;
@@ -268,6 +269,56 @@ BOOST_FIXTURE_TEST_CASE(minimal_message_length, wax_rsa_fixture) {
 BOOST_FIXTURE_TEST_CASE(wax_testnet_orng_production_vector, wax_rsa_fixture) {
    run({{hex_to_bytes(orng_message_hex), std::string{orng_signature}, std::string{orng_exponent},
          std::string{orng_modulus}, true}});
+}
+
+BOOST_AUTO_TEST_CASE(wax_testnet_orng_vector_across_savanna_transition) {
+   if constexpr(!wax_module_enabled) {
+      BOOST_TEST_MESSAGE("WAX consensus module is not selected; compatibility vector is not applicable");
+      return;
+   }
+
+   eosio::testing::legacy_validating_tester chain;
+   chain.create_accounts({wax_rsa_fixture::account});
+   chain.set_abi(wax_rsa_fixture::account, std::string{rsa_test_abi});
+
+   std::string corrupted_signature{orng_signature};
+   BOOST_REQUIRE(!corrupted_signature.empty());
+   corrupted_signature.back() = corrupted_signature.back() == '0' ? '1' : '0';
+
+   const std::vector<rsa_case> cases{
+      {hex_to_bytes(orng_message_hex), std::string{orng_signature}, std::string{orng_exponent},
+       std::string{orng_modulus}, true},
+      {hex_to_bytes(orng_message_hex), std::move(corrupted_signature), std::string{orng_exponent},
+       std::string{orng_modulus}, false},
+   };
+   const std::string contract = make_rsa_contract(cases);
+   chain.set_code(wax_rsa_fixture::account, contract.c_str());
+   chain.produce_block();
+
+   const auto legacy_trace =
+      chain.push_action(wax_rsa_fixture::account, "run"_n, wax_rsa_fixture::account, fc::mutable_variant_object());
+   BOOST_REQUIRE(legacy_trace && legacy_trace->receipt);
+   BOOST_REQUIRE_EQUAL(legacy_trace->receipt->status, transaction_receipt::executed);
+   const auto legacy_block = chain.produce_block();
+   BOOST_REQUIRE(!legacy_block->is_proper_svnn_block());
+
+   eosio::testing::finalizer_keys finalizers(chain, 1u, 1u);
+   finalizers.activate_savanna(0u);
+
+   const auto savanna_trace =
+      chain.push_action(wax_rsa_fixture::account, "run"_n, wax_rsa_fixture::account, fc::mutable_variant_object());
+   BOOST_REQUIRE(savanna_trace && savanna_trace->receipt);
+   BOOST_REQUIRE_EQUAL(savanna_trace->receipt->status, transaction_receipt::executed);
+   const auto savanna_block = chain.produce_block();
+   BOOST_REQUIRE(savanna_block->is_proper_svnn_block());
+
+   const auto savanna_block_num = savanna_block->block_num();
+   for(std::size_t remaining = 2 * eosio::testing::num_chains_to_final + 2;
+       chain.lib_block->block_num() < savanna_block_num && remaining > 0; --remaining) {
+      chain.produce_block();
+   }
+   BOOST_REQUIRE_GE(chain.lib_block->block_num(), savanna_block_num);
+   BOOST_REQUIRE(chain.validate());
 }
 
 BOOST_FIXTURE_TEST_CASE(malformed_parameter_length, wax_rsa_fixture) {
