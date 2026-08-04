@@ -8,8 +8,14 @@ if(RPMBUILD_FOUND)
    list(APPEND CPACK_GENERATOR "RPM")
 endif()
 
-set(CPACK_PACKAGE_VERSION "${VERSION_FULL}")
-set(CPACK_PACKAGE_FILE_NAME "${CMAKE_PROJECT_NAME}-${VERSION_FULL}")
+set(SPRING_PACKAGE_VERSION "${VERSION_FULL}")
+if(SPRING_RELEASE_SUFFIX)
+   string(APPEND SPRING_PACKAGE_VERSION "-${SPRING_RELEASE_SUFFIX}")
+endif()
+
+set(CPACK_PACKAGE_NAME "${SPRING_RELEASE_PACKAGE_NAME}")
+set(CPACK_PACKAGE_VERSION "${SPRING_PACKAGE_VERSION}")
+set(CPACK_PACKAGE_FILE_NAME "${SPRING_RELEASE_PACKAGE_NAME}-${SPRING_PACKAGE_VERSION}")
 if(EXISTS /etc/os-release)
    #if we're doing the build on Ubuntu or RHELish, add the platform version in to the package name
    file(READ /etc/os-release OS_RELEASE LIMIT 4096)
@@ -33,7 +39,9 @@ if (DPKG_FOUND)
 else()
     set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "${CMAKE_SYSTEM_PROCESSOR}")
 endif()
-string(REGEX REPLACE "^${CMAKE_PROJECT_NAME}-(.*)$" "${CMAKE_PROJECT_NAME}_\\1_${CPACK_DEBIAN_PACKAGE_ARCHITECTURE}" CPACK_DEBIAN_FILE_NAME "${CPACK_PACKAGE_FILE_NAME}")
+string(REGEX REPLACE "^${SPRING_RELEASE_PACKAGE_NAME}-(.*)$"
+       "${SPRING_RELEASE_PACKAGE_NAME}_\\1_${CPACK_DEBIAN_PACKAGE_ARCHITECTURE}"
+       CPACK_DEBIAN_FILE_NAME "${CPACK_PACKAGE_FILE_NAME}")
 
 string(APPEND CPACK_PACKAGE_FILE_NAME "-${CMAKE_SYSTEM_PROCESSOR}")
 
@@ -49,6 +57,10 @@ set(CPACK_DEBIAN_BASE_PACKAGE_SECTION "utils")
 
 set(CPACK_DEBIAN_PACKAGE_CONFLICTS "eosio, mandel, leap")
 set(CPACK_RPM_PACKAGE_CONFLICTS "eosio, mandel, leap")
+if(NOT SPRING_RELEASE_PACKAGE_NAME STREQUAL CMAKE_PROJECT_NAME)
+   string(APPEND CPACK_DEBIAN_PACKAGE_CONFLICTS ", ${CMAKE_PROJECT_NAME}")
+   string(APPEND CPACK_RPM_PACKAGE_CONFLICTS ", ${CMAKE_PROJECT_NAME}")
+endif()
 
 set(CPACK_COMPONENTS_ALL "base")
 if(ENABLE_SPRING_DEV_DEB)
@@ -57,9 +69,10 @@ endif()
 
 #enable per component packages for .deb; ensure main package is just "antelope-spring", not "antelope-spring-base", and make the dev package have "antelope-spring-dev" at the front not the back
 set(CPACK_DEB_COMPONENT_INSTALL ON)
-set(CPACK_DEBIAN_BASE_PACKAGE_NAME "${CMAKE_PROJECT_NAME}")
+set(CPACK_DEBIAN_BASE_PACKAGE_NAME "${SPRING_RELEASE_PACKAGE_NAME}")
 set(CPACK_DEBIAN_BASE_FILE_NAME "${CPACK_DEBIAN_FILE_NAME}.deb")
-string(REGEX REPLACE "^(${CMAKE_PROJECT_NAME})" "\\1-dev" CPACK_DEBIAN_DEV_FILE_NAME "${CPACK_DEBIAN_BASE_FILE_NAME}")
+string(REGEX REPLACE "^(${SPRING_RELEASE_PACKAGE_NAME})" "\\1-dev"
+       CPACK_DEBIAN_DEV_FILE_NAME "${CPACK_DEBIAN_BASE_FILE_NAME}")
 
 #deb package tooling will be unable to detect deps for the dev package. llvm is tricky since we don't know what package could have been used; try to figure it out
 set(CPACK_DEBIAN_DEV_PACKAGE_DEPENDS "libgmp-dev, python3-distutils, python3-numpy, zlib1g-dev")

@@ -5,6 +5,9 @@ include(CTest)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMakeModules")
 
+include(consensusModules)
+spring_select_consensus_profile()
+
 include( GNUInstallDirs )
 include( MASSigning )
 include( AddTestHelpers )

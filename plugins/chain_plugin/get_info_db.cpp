@@ -1,4 +1,5 @@
 #include <eosio/chain_plugin/get_info_db.hpp>
+#include <eosio/chain/consensus_module_manifest.hpp>
 #include <eosio/chain/resource_limits.hpp>
 #include <eosio/chain/application.hpp>
 
@@ -22,7 +23,10 @@ namespace eosio::chain_apis {
          , server_version(fc::itoh(static_cast<uint32_t>(app().version())))
          , chain_id(controller.get_chain_id())
          , server_version_string(app().version_string())
-         , server_full_version_string(app().full_version_string()) {}
+         , server_full_version_string(app().full_version_string())
+         , server_consensus_profile(consensus_profile)
+         , server_consensus_module_manifest(consensus_module_manifest)
+         , server_consensus_manifest_hash(consensus_module_manifest_hash) {}
 
       // Called on accepted_block signal.
       void on_accepted_block() {
@@ -82,6 +86,9 @@ namespace eosio::chain_apis {
       chain::chain_id_type  chain_id;
       std::string           server_version_string;
       std::string           server_full_version_string;
+      std::string           server_consensus_profile;
+      std::string           server_consensus_module_manifest;
+      std::string           server_consensus_manifest_hash;
 
       // Stores common data, and returns fork_db_has_root for future uses to avoid
       // multiple mutexes in fork db.
@@ -93,6 +100,9 @@ namespace eosio::chain_apis {
          info->chain_id                   = chain_id;
          info->server_version_string      = server_version_string;
          info->server_full_version_string = server_full_version_string;
+         info->server_consensus_profile         = server_consensus_profile;
+         info->server_consensus_module_manifest = server_consensus_module_manifest;
+         info->server_consensus_manifest_hash    = server_consensus_manifest_hash;
 
          // chain head part
          const auto& head = controller.head();

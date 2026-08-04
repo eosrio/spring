@@ -5,6 +5,10 @@
 
 namespace eosio::chain {
 
+inline constexpr std::string_view consensus_profile_name = "@SPRING_CONSENSUS_PROFILE_NAME@";
+inline constexpr std::string_view consensus_profile_version = "@SPRING_CONSENSUS_PROFILE_VERSION@";
+inline constexpr std::string_view consensus_profile = "@SPRING_CONSENSUS_PROFILE_ID@";
+inline constexpr std::string_view consensus_profile_manifest = "@SPRING_CONSENSUS_PROFILE_MANIFEST@";
 inline constexpr std::string_view consensus_module_manifest = "@SPRING_CONSENSUS_MODULE_MANIFEST@";
 inline constexpr std::string_view consensus_module_manifest_hash = "@SPRING_CONSENSUS_MODULE_MANIFEST_HASH@";
 inline constexpr uint64_t consensus_module_cache_id = 0x@SPRING_CONSENSUS_MODULE_CACHE_ID@ULL;

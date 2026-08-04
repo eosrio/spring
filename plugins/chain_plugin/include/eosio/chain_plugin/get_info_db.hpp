@@ -46,6 +46,9 @@ namespace eosio::chain_apis {
          std::optional<uint32_t>              fork_db_head_block_num;
          std::optional<chain::block_id_type>  fork_db_head_block_id;
          std::optional<std::string>           server_full_version_string;
+         std::string                          server_consensus_profile;
+         std::string                          server_consensus_module_manifest;
+         std::string                          server_consensus_manifest_hash;
          std::optional<uint64_t>              total_cpu_weight;
          std::optional<uint64_t>              total_net_weight;
          std::optional<uint32_t>              earliest_available_block_num;
@@ -76,4 +79,5 @@ FC_REFLECT(eosio::chain_apis::get_info_db::get_info_results,
            (head_block_id)(head_block_time)(head_block_producer)
            (virtual_block_cpu_limit)(virtual_block_net_limit)(block_cpu_limit)(block_net_limit)
            (server_version_string)(fork_db_head_block_num)(fork_db_head_block_id)(server_full_version_string)
+           (server_consensus_profile)(server_consensus_module_manifest)(server_consensus_manifest_hash)
            (total_cpu_weight)(total_net_weight)(earliest_available_block_num)(last_irreversible_block_time))

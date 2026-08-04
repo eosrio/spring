@@ -23,6 +23,8 @@ using namespace eosio::chain;
 
 namespace {
 
+constexpr bool wax_module_enabled = consensus_module_manifest.find("wax@") != std::string_view::npos;
+
 // These keys and test cases come from the WAX fork's wax/signature_tests.cpp.
 constexpr std::string_view public_exponent_1024 = "3";
 
@@ -219,6 +221,10 @@ struct wax_rsa_fixture : eosio::testing::validating_tester {
    }
 
    transaction_trace_ptr run(const std::vector<rsa_case>& cases) {
+      if constexpr(!wax_module_enabled) {
+         BOOST_TEST_MESSAGE("WAX consensus module is not selected; compatibility vector is not applicable");
+         return {};
+      }
       const std::string contract = make_rsa_contract(cases);
       set_code(account, contract.c_str());
       produce_block();
@@ -280,7 +286,7 @@ BOOST_AUTO_TEST_CASE(intrinsic_availability_matches_build) {
    eosio::testing::validating_tester chain;
    chain.create_accounts({wax_rsa_fixture::account});
    const std::string contract = make_rsa_contract({{"message", "aa", "3", "bb", false}});
-   if constexpr(consensus_module_manifest.find("wax@") != std::string_view::npos) {
+   if constexpr(wax_module_enabled) {
       BOOST_REQUIRE_NO_THROW(chain.set_code(wax_rsa_fixture::account, contract.c_str()));
    } else {
       BOOST_CHECK_THROW(chain.set_code(wax_rsa_fixture::account, contract.c_str()), wasm_exception);

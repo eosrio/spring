@@ -1,4 +1,5 @@
 #include <eosio/chain/application.hpp>
+#include <eosio/chain/consensus_module_manifest.hpp>
 
 #include <eosio/chain_plugin/chain_plugin.hpp>
 #include <eosio/http_plugin/http_plugin.hpp>
@@ -170,7 +171,16 @@ int main(int argc, char** argv)
 
       app->set_version(htonl(short_hash));
       app->set_version_string(eosio::version::version_client());
-      app->set_full_version_string(eosio::version::version_full());
+      app->set_full_version_string(
+         eosio::version::version_full() + "+consensus." +
+         std::string{eosio::chain::consensus_profile_name} + "." +
+         std::string{eosio::chain::consensus_profile_version} + "." +
+         std::string{eosio::chain::consensus_module_manifest_hash.substr(0, 16)});
+
+      ilog("Consensus profile ${profile}; modules '${modules}'; manifest ${hash}",
+           ("profile", std::string{eosio::chain::consensus_profile})
+           ("modules", std::string{eosio::chain::consensus_module_manifest})
+           ("hash", std::string{eosio::chain::consensus_module_manifest_hash}));
 
       auto root = fc::app_path();
       app->set_default_data_dir(root / "eosio" / nodeos::config::node_executable_name / "data" );

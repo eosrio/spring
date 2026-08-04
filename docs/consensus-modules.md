@@ -36,6 +36,8 @@ Spring generates and compiles:
 - additions to the genesis intrinsic whitelist;
 - additions to the EOS-VM-OC intrinsic name table;
 - a manifest containing module versions, intrinsic names, and source hashes;
+- profile and module-descriptor hashes, so changing module selection or build
+  metadata also changes the manifest even before a required version bump;
 - a manifest hash mixed into the OC cache identifier, so changing modules
   invalidates locally compiled code instead of reusing incompatible ordinals.
 
@@ -44,14 +46,30 @@ function that receives `apply_context&` to the member-function ABI expected by
 EOS-VM and EOS-VM-OC. The public `host_function_registrator` registers that
 adapter with both runtimes.
 
-Configure a build with one or more module source directories:
+Release builds select a reviewed consensus profile. The profile owns the exact
+module set, package name, and release suffix:
 
 ```sh
 cmake -S . -B build \
-  -DSPRING_CONSENSUS_MODULES="consensus_modules/wax;../another-module"
+  -DSPRING_CONSENSUS_PROFILE=wax
 ```
 
-No modules are enabled by default.
+The built-in profiles are:
+
+| Profile | Package | Modules |
+| --- | --- | --- |
+| `vanilla` | `antelope-spring` | none |
+| `wax` | `antelope-spring-wax` | `consensus_modules/wax` |
+
+`vanilla` is the default. Profile definitions live in `consensus_profiles/`;
+adding a chain flavor means adding a profile and its narrowly owned modules,
+not creating a Spring fork. Module directories are derived from the selected
+profile and cannot be supplied independently in a release build.
+
+The profile is not tied to a chain ID. A `wax` build can therefore create any
+number of local WAX-compatible development chains. For a new chain, its profile
+determines the genesis intrinsic set. Existing snapshots carry their active
+intrinsic whitelist.
 
 ## Activation and compatibility
 
@@ -65,8 +83,8 @@ production API also needs an explicit activation policy:
 
 - legacy chains can declare an intrinsic as active from genesis;
 - new intrinsics should normally be activated by a protocol feature;
-- builds should declare which chain profiles they support and refuse an
-  unsupported profile before replay or block validation;
+- builds declare one consensus profile and expose its manifest before replay or
+  block validation;
 - node version output and build metadata should expose the module manifest hash.
 
 ## Production requirements
@@ -78,7 +96,7 @@ Before treating this as a stable community interface:
    callback instead of requiring edits to `controller.cpp`.
 3. Validate duplicate names and collisions with core intrinsics at configure
    time and again at process startup.
-4. Make supported chain IDs/profiles and required module hashes machine-readable.
+4. Make required profile and module hashes machine-readable in release provenance.
 5. Add cross-runtime conformance tests for EOS-VM, EOS-VM-JIT, and EOS-VM-OC.
 6. Add replay, snapshot restore, fork-switch, and mixed-binary rejection tests.
 7. Define deterministic coding constraints: no locale, wall clock, network,
