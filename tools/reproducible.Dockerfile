@@ -126,13 +126,15 @@ RUN test "${_SPRING_CLANG_VERSION}" = "${_SPRING_LLVM_VERSION}" || { echo "ERROR
 FROM builder AS build
 
 ARG SPRING_BUILD_JOBS
+ARG SPRING_CONSENSUS_PROFILE=vanilla
 
 # Yuck: This places the source at the same location as spring's CI (build.yaml, build_base.yaml). Unfortunately this location only matches
 #       when build.yaml etc are being run from a repository named spring.
 COPY / /__w/spring/spring
-RUN cmake -S /__w/spring/spring -B build -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -GNinja && \
+RUN cmake -S /__w/spring/spring -B build -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -GNinja \
+          -DSPRING_CONSENSUS_PROFILE="${SPRING_CONSENSUS_PROFILE}" && \
     cmake --build build -t package -- ${SPRING_BUILD_JOBS:+-j$SPRING_BUILD_JOBS} && \
-    /__w/spring/spring/tools/tweak-deb.sh build/antelope-spring_*.deb
+    /__w/spring/spring/tools/tweak-deb.sh build/antelope-spring*_*.deb
 
 FROM scratch AS exporter
 COPY --from=build /build/*.deb /build/*.tar.* /

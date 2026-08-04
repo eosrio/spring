@@ -113,9 +113,19 @@ The pinned reproducible build requires Docker. Make sure you are in the root of 
 ```bash
 DOCKER_BUILDKIT=1 docker build -f tools/reproducible.Dockerfile -o . .
 ```
-This command will take a substantial amount of time because a toolchain is built from scratch. Upon completion, the current directory will contain a built `.deb` and `.tar.gz` (you can change the `-o .` argument to place the output in a different directory). If needing to reduce the number of parallel jobs as warned above, run the command as,
+This command will take a substantial amount of time because a toolchain is built from scratch. Upon completion, the current directory will contain a built `.deb` and `.tar.zst` (you can change the `-o .` argument to place the output in a different directory). If needing to reduce the number of parallel jobs as warned above, run the command as,
 ```bash
 DOCKER_BUILDKIT=1 docker build --build-arg SPRING_BUILD_JOBS=4 -f tools/reproducible.Dockerfile -o . .
+```
+
+Consensus-profile releases use the same pinned build and select their reviewed
+profile explicitly. For example, build the WAX profile with:
+
+```bash
+DOCKER_BUILDKIT=1 docker build \
+  --build-arg SPRING_BUILD_JOBS=4 \
+  --build-arg SPRING_CONSENSUS_PROFILE=wax \
+  -f tools/reproducible.Dockerfile -o . .
 ```
 
 #### Unpinned Build
