@@ -280,6 +280,7 @@ inline constexpr auto get_intrinsic_table() {
       "env.bls_fp_exp",
       "env.set_finalizers",
       "eosvmoc_internal.check_memcpy_params"
+#include <eosio/chain/webassembly/consensus_intrinsic_names.inc>
    );
 }
 inline constexpr std::size_t find_intrinsic_index(std::string_view hf) {

@@ -5,6 +5,7 @@
 #include <eosio/chain/webassembly/eos-vm-oc/eos-vm-oc.hpp>
 #include <eosio/chain/webassembly/eos-vm-oc/intrinsic.hpp>
 #include <eosio/chain/webassembly/eos-vm-oc/compile_monitor.hpp>
+#include <eosio/chain/consensus_module_manifest.hpp>
 #include <eosio/chain/exceptions.hpp>
 
 #include <fc/log/logger_config.hpp> //set_thread_name
@@ -18,7 +19,7 @@ namespace eosio { namespace chain { namespace eosvmoc {
 static constexpr size_t header_offset = 512u;
 static constexpr size_t header_size = 512u;
 static constexpr size_t total_header_size = header_offset + header_size;
-static constexpr uint64_t header_id = 0x32434f4d56534f45ULL; //"EOSVMOC2" little endian
+static constexpr uint64_t header_id = 0x32434f4d56534f45ULL ^ consensus_module_cache_id; // "EOSVMOC2" plus module ABI
 
 struct code_cache_header {
    uint64_t id = header_id;

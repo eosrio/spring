@@ -1,0 +1,12 @@
+#pragma once
+
+#include <cstdint>
+#include <string_view>
+
+namespace eosio::chain {
+
+inline constexpr std::string_view consensus_module_manifest = "@SPRING_CONSENSUS_MODULE_MANIFEST@";
+inline constexpr std::string_view consensus_module_manifest_hash = "@SPRING_CONSENSUS_MODULE_MANIFEST_HASH@";
+inline constexpr uint64_t consensus_module_cache_id = 0x@SPRING_CONSENSUS_MODULE_CACHE_ID@ULL;
+
+} // namespace eosio::chain

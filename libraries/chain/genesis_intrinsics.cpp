@@ -171,6 +171,7 @@ const std::vector<const char*> genesis_intrinsics = {
    "memmove",
    "memcmp",
    "memset"
+#include <eosio/chain/consensus_genesis_intrinsics.inc>
 };
 
 } } // namespace eosio::chain

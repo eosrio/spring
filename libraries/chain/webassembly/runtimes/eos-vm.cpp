@@ -1,5 +1,6 @@
 #include <eosio/chain/webassembly/eos-vm.hpp>
 #include <eosio/chain/webassembly/interface.hpp>
+#include <eosio/chain/webassembly/host_function_registration.hpp>
 #include <eosio/chain/account_object.hpp>
 #include <eosio/chain/apply_context.hpp>
 #include <eosio/chain/transaction_context.hpp>
@@ -292,20 +293,6 @@ thread_local typename eos_vm_runtime<Impl>::context_t eos_vm_runtime<Impl>::_exe
 template<typename Impl>
 thread_local eos_vm_backend_t<Impl> eos_vm_runtime<Impl>::_bkend;
 }
-
-template <auto HostFunction, typename... Preconditions>
-struct host_function_registrator {
-   template <typename Mod, typename Name>
-   constexpr host_function_registrator(Mod mod_name, Name fn_name) {
-      using rhf_t = eos_vm_host_functions_t;
-      rhf_t::add<HostFunction, Preconditions...>(mod_name.c_str(), fn_name.c_str());
-#ifdef EOSIO_EOS_VM_OC_RUNTIME_ENABLED
-      constexpr bool is_injected = (Mod() == BOOST_HANA_STRING(EOSIO_INJECTED_MODULE_NAME));
-      eosvmoc::register_eosvm_oc<HostFunction, is_injected, std::tuple<Preconditions...>>(
-          mod_name + BOOST_HANA_STRING(".") + fn_name);
-#endif
-   }
-};
 
 #define REGISTER_INJECTED_HOST_FUNCTION(NAME, ...)                                                                     \
    static host_function_registrator<&interface::NAME, ##__VA_ARGS__> NAME##_registrator_impl() {                       \

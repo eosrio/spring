@@ -1,0 +1,13 @@
+#include <eosio/chain/consensus_module_registry.hpp>
+
+@SPRING_CONSENSUS_MODULE_DECLARATIONS@
+namespace eosio::chain {
+
+void register_consensus_modules() {
+   static const bool registered = [] {
+@SPRING_CONSENSUS_MODULE_REGISTRATIONS@      return true;
+   }();
+   static_cast<void>(registered);
+}
+
+} // namespace eosio::chain

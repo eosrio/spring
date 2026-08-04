@@ -6,6 +6,8 @@
 #include <fc/crypto/sha1.hpp>
 #include <boost/hana/string.hpp>
 
+#include <utility>
+
 namespace eosio { namespace chain {
 class apply_context;
 namespace webassembly {
@@ -16,6 +18,16 @@ namespace webassembly {
 
          inline apply_context& get_context() { return context; }
          inline const apply_context& get_context() const { return context; }
+
+         /**
+          * Adapts a consensus-module free function to the member-function ABI
+          * expected by eos-vm and eos-vm-oc. The module function receives the
+          * active apply_context followed by the WASM-visible arguments.
+          */
+         template<auto Function, typename... Args>
+         decltype(auto) invoke_consensus_intrinsic(Args... args) {
+            return Function(context, std::forward<Args>(args)...);
+         }
 
          /**
           * Retrieve the signed_transaction.context_free_data[index].

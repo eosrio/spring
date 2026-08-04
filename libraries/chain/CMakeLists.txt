@@ -1,6 +1,14 @@
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/include/eosio/chain/core_symbol.hpp.in ${CMAKE_CURRENT_BINARY_DIR}/include/eosio/chain/core_symbol.hpp)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/genesis_state_root_key.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/genesis_state_root_key.cpp)
 
+include(consensusModules)
+set(CONSENSUS_MODULE_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/consensus_modules/generated/include")
+spring_configure_consensus_modules(
+   OUTPUT_INCLUDE_DIR "${CONSENSUS_MODULE_INCLUDE_DIR}"
+   OUT_SOURCES CHAIN_CONSENSUS_MODULE_SOURCES
+   OUT_MANIFEST_HASH CHAIN_CONSENSUS_MODULE_MANIFEST_HASH
+)
+
 file(GLOB HEADERS "include/eosio/chain/*.hpp"
                   "include/eosio/chain/webassembly/*.hpp"
                   "${CMAKE_CURRENT_BINARY_DIR}/include/eosio/chain/core_symbol.hpp" )
@@ -120,6 +128,7 @@ add_library( eosio_chain
              ${CHAIN_EOSVMOC_SOURCES}
              ${CHAIN_EOSVM_SOURCES}
              ${CHAIN_WEBASSEMBLY_SOURCES}
+             ${CHAIN_CONSENSUS_MODULE_SOURCES}
 
              authority.cpp
              trace.cpp
@@ -154,6 +163,7 @@ target_link_libraries( eosio_chain PUBLIC bn256 fc chainbase eosio_rapidjson Log
                      )
 target_include_directories( eosio_chain
                             PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include" "${CMAKE_CURRENT_BINARY_DIR}/include"
+                                   "${CONSENSUS_MODULE_INCLUDE_DIR}"
                                    "${CMAKE_CURRENT_SOURCE_DIR}/../wasm-jit/Include"
                             )
 
@@ -181,3 +191,6 @@ install( DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/eosio/chain/
       FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h" EXCLUDE
 )
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/include/eosio/chain/core_symbol.hpp DESTINATION ${CMAKE_INSTALL_FULL_INCLUDEDIR}/eosio/chain COMPONENT dev EXCLUDE_FROM_ALL)
+install(DIRECTORY ${CONSENSUS_MODULE_INCLUDE_DIR}/eosio/chain/
+      DESTINATION ${CMAKE_INSTALL_FULL_INCLUDEDIR}/eosio/chain
+      COMPONENT dev EXCLUDE_FROM_ALL)

@@ -1,4 +1,5 @@
 #include <eosio/chain/webassembly/interface.hpp>
+#include <eosio/chain/consensus_module_registry.hpp>
 #include <eosio/chain/webassembly/eos-vm.hpp>
 #include <eosio/chain/wasm_interface.hpp>
 #include <eosio/chain/apply_context.hpp>
@@ -34,7 +35,8 @@ namespace eosio { namespace chain {
 
    wasm_interface::wasm_interface(vm_type vm, vm_oc_enable eosvmoc_tierup, const chainbase::database& d,
                                   platform_timer& main_thread_timer, const std::filesystem::path data_dir, const eosvmoc::config& eosvmoc_config, bool profile)
-     : my( new wasm_interface_impl(vm, eosvmoc_tierup, d, main_thread_timer, data_dir, eosvmoc_config, profile) ) {}
+     : my((register_consensus_modules(),
+           new wasm_interface_impl(vm, eosvmoc_tierup, d, main_thread_timer, data_dir, eosvmoc_config, profile))) {}
 
    wasm_interface::~wasm_interface() {}
 
