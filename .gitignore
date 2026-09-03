@@ -99,3 +99,8 @@ snapshots
 # reproducible build artifacts dropped in the repo root by `docker build ... -o .`
 /antelope-spring*.deb
 /antelope-spring*.tar.*
+
+# test & agent artifacts
+/cluster-artifacts/
+/config-dir/
+/.agents/
