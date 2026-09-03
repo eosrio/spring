@@ -124,12 +124,25 @@ namespace detail {
       auto operator<=>(const endpoint& lhs) const = default;
    };
 
+   inline bool is_valid_port(std::string_view port_str) {
+      if (port_str.empty()) return false;
+      for (char c : port_str) {
+         if (!std::isdigit(static_cast<unsigned char>(c))) return false;
+      }
+      try {
+         unsigned long p = std::stoul(std::string(port_str));
+         return p >= 1 && p <= 65535;
+      } catch (...) {
+         return false;
+      }
+   }
+
    /// @return host, port, type. returns empty on invalid endpoint, does not throw
    inline std::tuple<std::string, std::string, std::string> split_host_port_type(const std::string& endpoint) {
       // host:port[:trx|:blk][:<rate>]   // rate is discarded
       constexpr bool should_throw = false;
       auto [host, port, remainder] = detail::split_host_port_remainder(endpoint, should_throw);
-      if (host.empty() || port.empty()) return {};
+      if (host.empty() || port.empty() || !is_valid_port(port)) return {};
 
       std::string type;
       if (remainder.starts_with("blk") || remainder.starts_with("trx")) {

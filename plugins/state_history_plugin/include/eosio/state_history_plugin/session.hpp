@@ -42,7 +42,9 @@ public:
    }
 
    std::deque<bool> extract() {
-      return std::move(_queue);
+      std::deque<bool> extracted;
+      _queue.swap(extracted);
+      return extracted;
    }
 
    size_t size() const { return _queue.size(); }

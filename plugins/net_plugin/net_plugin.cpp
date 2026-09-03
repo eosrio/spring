@@ -4810,7 +4810,7 @@ namespace eosio {
 
    // called by API
    string connections_manager::connect( const string& host, const string& p2p_address ) {
-      if (auto [h, port, type] = net_utils::split_host_port_type(host); h.empty()) {
+      if (auto [h, port, type] = net_utils::split_host_port_type(host); h.empty() || port.empty() || !net_utils::is_valid_port(port)) {
          return "invalid peer address";
       }
       std::unique_lock g( connections_mtx );
@@ -4821,7 +4821,7 @@ namespace eosio {
    }
 
    string connections_manager::resolve_and_connect( const string& peer_address, const string& listen_address ) {
-      if (auto [host, port, type] = net_utils::split_host_port_type(peer_address); host.empty()) {
+      if (auto [host, port, type] = net_utils::split_host_port_type(peer_address); host.empty() || port.empty() || !net_utils::is_valid_port(port)) {
          return "invalid peer address";
       }
 

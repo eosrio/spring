@@ -1137,6 +1137,21 @@ BOOST_AUTO_TEST_CASE(ship_status_request_queue_adversarial_flood_and_churn_test)
       BOOST_CHECK(q.try_append(false));
       BOOST_CHECK_EQUAL(q.size(), 1u);
    }
+
+   // 4. Extract swap determinism: ensures queue is deterministically empty post-extract and resets size to 0
+   {
+      status_request_queue q(10);
+      for (int i = 0; i < 7; ++i) BOOST_CHECK(q.try_append(i % 2 == 0));
+      BOOST_CHECK_EQUAL(q.size(), 7u);
+      auto extracted = q.extract();
+      BOOST_CHECK_EQUAL(extracted.size(), 7u);
+      BOOST_CHECK_EQUAL(q.size(), 0u);
+      BOOST_CHECK(q.empty());
+      // Post-extract appending works up to max_size deterministically
+      for (int i = 0; i < 10; ++i) BOOST_CHECK(q.try_append(true));
+      BOOST_CHECK_EQUAL(q.size(), 10u);
+      BOOST_CHECK_EQUAL(q.try_append(true), false);
+   }
 }
 
 BOOST_AUTO_TEST_SUITE_END()

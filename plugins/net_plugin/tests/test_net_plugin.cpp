@@ -607,13 +607,18 @@ BOOST_AUTO_TEST_CASE(test_adversarial_connect_fuzz_addresses) {
       "2001:db8::1:9876",
       "[2001:db8::1]:",
       "a:b:c:d:e:f:g:h",
+      "peer:abc:blk",
+      "peer:http",
+      "127.0.0.1:0",
+      "127.0.0.1:65536",
+      "127.0.0.1:99999",
       std::string(4096, 'A'),
       std::string(4096, 'B') + ":9876"
    };
 
    std::set<std::string> supplied_peers;
    auto connect_fn = [&](const std::string& host) -> std::string {
-      if (auto [h, port, type] = split_host_port_type(host); h.empty()) {
+      if (auto [h, port, type] = split_host_port_type(host); h.empty() || port.empty() || !is_valid_port(port)) {
          return "invalid peer address";
       }
       supplied_peers.insert(host);
