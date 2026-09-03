@@ -3042,6 +3042,7 @@ struct controller_impl {
 
       transaction_trace_ptr trace;
       try {
+         trx->declared_auths_satisfied = false;
          auto start = fc::time_point::now();
          const bool check_auth = !skip_auth_check() && !trx->implicit() && !trx->is_read_only();
          const fc::microseconds sig_cpu_usage = trx->signature_cpu_usage();
@@ -3101,6 +3102,7 @@ struct controller_impl {
                        false,
                        trx->is_dry_run()
                );
+               trx->declared_auths_satisfied = true;
             }
             trx_context.exec();
             trx_context.finalize(); // Automatically rounds up network and CPU usage in trace and bills payers if successful

@@ -840,5 +840,85 @@ BOOST_AUTO_TEST_CASE( bls_testfpmod ) { try {
 
 } FC_LOG_AND_RETHROW() }
 
+BOOST_AUTO_TEST_CASE( bls_overflow_wrapping_lengths ) { try {
+   tester c( setup_policy::preactivate_feature_and_new_bios );
+
+   const auto& tester1_account = account_name("tester1");
+   c.create_accounts( {tester1_account} );
+   c.produce_block();
+
+   const auto& pfm = c.control->get_protocol_feature_manager();
+   const auto& d = pfm.get_builtin_digest( builtin_protocol_feature_t::bls_primitives );
+   BOOST_REQUIRE( d );
+
+   c.preactivate_protocol_features( {*d} );
+   c.produce_block();
+
+   c.set_code( tester1_account, test_contracts::bls_primitives_test_wasm() );
+   c.set_abi( tester1_account, test_contracts::bls_primitives_test_abi().data() );
+   c.produce_block();
+
+   const uint32_t n_wrap0 = 0x08000000; // 134,217,728: wraps n*96, n*192, n*32 to 0 mod 2^32
+   const uint32_t n_wrap1 = 0x08000001; // 134,217,729: wraps n*96 -> 96, n*192 -> 192, n*32 -> 32 mod 2^32
+
+   std::vector<char> zero_res_g1(96, 0);
+   std::vector<char> zero_res_g2(192, 0);
+   std::vector<char> zero_res_pairing(576, 0);
+
+   // Case 1: n = 0x08000000 with empty spans (in 32-bit wraps to 0)
+   c.push_action( tester1_account, "testg1wsum"_n, tester1_account, mutable_variant_object()
+      ("points", std::vector<char>())
+      ("scalars", std::vector<char>())
+      ("num", n_wrap0)
+      ("res", zero_res_g1)
+      ("expected_error", (int32_t)return_code::failure)
+   );
+
+   c.push_action( tester1_account, "testg2wsum"_n, tester1_account, mutable_variant_object()
+      ("points", std::vector<char>())
+      ("scalars", std::vector<char>())
+      ("num", n_wrap0)
+      ("res", zero_res_g2)
+      ("expected_error", (int32_t)return_code::failure)
+   );
+
+   c.push_action( tester1_account, "testpairing"_n, tester1_account, mutable_variant_object()
+      ("g1_points", std::vector<char>())
+      ("g2_points", std::vector<char>())
+      ("num", n_wrap0)
+      ("res", zero_res_pairing)
+      ("expected_error", (int32_t)return_code::failure)
+   );
+
+   // Case 2: n = 0x08000001 with 1-element buffers (in 32-bit wraps to 1-element size)
+   std::vector<char> g1_point(96, 0);
+   std::vector<char> g2_point(192, 0);
+   std::vector<char> scalar(32, 0);
+
+   c.push_action( tester1_account, "testg1wsum"_n, tester1_account, mutable_variant_object()
+      ("points", g1_point)
+      ("scalars", scalar)
+      ("num", n_wrap1)
+      ("res", zero_res_g1)
+      ("expected_error", (int32_t)return_code::failure)
+   );
+
+   c.push_action( tester1_account, "testg2wsum"_n, tester1_account, mutable_variant_object()
+      ("points", g2_point)
+      ("scalars", scalar)
+      ("num", n_wrap1)
+      ("res", zero_res_g2)
+      ("expected_error", (int32_t)return_code::failure)
+   );
+
+   c.push_action( tester1_account, "testpairing"_n, tester1_account, mutable_variant_object()
+      ("g1_points", g1_point)
+      ("g2_points", g2_point)
+      ("num", n_wrap1)
+      ("res", zero_res_pairing)
+      ("expected_error", (int32_t)return_code::failure)
+   );
+
+} FC_LOG_AND_RETHROW() }
 
 BOOST_AUTO_TEST_SUITE_END()

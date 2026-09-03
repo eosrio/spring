@@ -976,6 +976,38 @@ BOOST_AUTO_TEST_CASE(verify_qc_dual_finalizers) try {
    vote_same_test(false /*expected same*/, {}, true /*vote_weak_on_active*/, true /* vote_strong_on_pending*/, {});
    vote_same_test(false /*expected same*/, true /*vote_strong_on_active*/, {}, {}, true /*vote_weak_on_pending*/);
 
+   // Issue 2: pending QC vote bitset validated before indexing
+   {
+      bls_aggregate_signature active_agg_sig;
+      bls_aggregate_signature pending_agg_sig;
+
+      vote_bitset_t active_votes(num_finalizers);
+      active_votes[0] = 1;
+      active_votes[2] = 1;
+      qc_sig_t active_qc_sig{active_votes, {}, active_agg_sig};
+
+      // Case A: pending_strong_votes is empty (size 0)
+      vote_bitset_t empty_bitset(0);
+      qc_sig_t pending_qc_sig_empty{empty_bitset, {}, pending_agg_sig};
+      qc_t qc_empty{bsp->block_num(), active_qc_sig, pending_qc_sig_empty};
+      BOOST_CHECK_EXCEPTION( bsp->verify_qc(qc_empty), invalid_qc,
+                             eosio::testing::fc_exception_message_starts_with("vote bitset size is not the same as the number of finalizers") );
+
+      // Case B: pending_strong_votes is undersized (size 1 < num_finalizers 3), so dual finalizer index 1 would be OOB
+      vote_bitset_t undersized_bitset(1);
+      undersized_bitset[0] = 1;
+      qc_sig_t pending_qc_sig_under{undersized_bitset, {}, pending_agg_sig};
+      qc_t qc_under{bsp->block_num(), active_qc_sig, pending_qc_sig_under};
+      BOOST_CHECK_EXCEPTION( bsp->verify_qc(qc_under), invalid_qc,
+                             eosio::testing::fc_exception_message_starts_with("vote bitset size is not the same as the number of finalizers") );
+
+      // Case C: neither strong_votes nor weak_votes present on pending_policy_sig
+      qc_sig_t pending_qc_sig_novotes{std::nullopt, std::nullopt, pending_agg_sig};
+      qc_t qc_novotes{bsp->block_num(), active_qc_sig, pending_qc_sig_novotes};
+      BOOST_CHECK_EXCEPTION( bsp->verify_qc(qc_novotes), invalid_qc,
+                             eosio::testing::fc_exception_message_starts_with("Neither strong_votes nor weak_votes present") );
+   }
+
 } FC_LOG_AND_RETHROW();
 
 BOOST_FIXTURE_TEST_CASE(get_finality_data_test, finality_test_cluster<4>) try {
