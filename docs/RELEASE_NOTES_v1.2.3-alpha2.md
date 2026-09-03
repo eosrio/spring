@@ -32,10 +32,10 @@ Key remediations include:
 #### P2P / networking
 - **P2P frame parsers not bounded to declared message length** (Issue 4): Introduce `fc::bounded_datastream`, route all net message unpacking through bounded streams, and add `connection::advance_to_frame_end()` to skip unconsumed declared bytes without desynchronizing the stream.
 - **Missing block notices count as block progress** (Issue 3): Refresh `latest_blk_time` only when receiving notices for blocks already held in local state; default `p2p-disable-block-nack` to `true` when a block producer is configured.
-- **Invalid peer retention in `supplied_peers`** (Issue 13): Validate endpoint syntax with `split_host_port_type` prior to insertion into `supplied_peers` in `connections_manager::connect()`.
+- **Invalid peer retention in `supplied_peers` and non-numeric port rejection** (Issue 13): Validate endpoint syntax and enforce numeric port range (1..65535) via `net_utils::is_valid_port` and `split_host_port_type` prior to insertion into `supplied_peers` in `connections_manager::connect()`.
 
 #### Plugins & State History (SHiP & Producer)
-- **SHiP status-request queue unbounded** (Issue 6): Cap `queued_status_requests` in `session.hpp` to 100 entries and cleanly terminate sessions that exceed the limit with `status_request_queue_limit_exceeded`.
+- **SHiP status-request queue unbounded** (Issue 6): Cap `queued_status_requests` in `session.hpp` to 100 entries with deterministic swap extraction to prevent memory exhaustion, and cleanly terminate sessions that exceed the limit with `status_request_queue_limit_exceeded`.
 - **Failed-transaction blame uses unverified authorizer** (Issue 7): Gate subjective billing account failures (`_account_fails.add`) and failure CPU billing on `trx->satisfied_authorizations()`, preventing unauthenticated attackers from throttling arbitrary victim accounts.
 
 #### Core utilities & correctness (`libfc`, `state_history`)
@@ -43,6 +43,9 @@ Key remediations include:
 - **`message_buffer::advance_read_ptr` bounds check** (Issue 10): Add bounds verification throwing `fc::out_of_range_exception` prior to adjusting read pointers, preventing 32-bit unsigned underflow and heap memory corruption.
 - **`to_base58` null pointer safety** (Issue 11): Return an empty string for zero-length buffers, assert non-null data pointer on positive length, and guard `EncodeBase58` overloads against empty containers (`data() == nullptr`).
 - **`history_pack_big_bytes(shared_blob)` null `memcpy`** (Issue 12): Add size guard `if (b.size()) ds.write(b.data(), b.size());` matching the `bytes` overload, eliminating undefined behavior under UBSan.
+
+#### Licensing
+- **Synchronize upstream MIT License**: Upstream `AntelopeIO/spring` transitioned the project from Business Source License 1.1 (BSL 1.1) to the MIT License in commit [`e6a99f68`](https://github.com/AntelopeIO/spring/commit/e6a99f68b67abc4d89fe716755b2e1394a4991f7) on November 12, 2025 (prior to the eosrio maintenance releases). Because upstream applied the change to `main` while `release/1.2` was frozen, the 1.2.x maintenance branch had inadvertently retained the older BSL 1.1 text. This release synchronizes `LICENSE` with upstream's official MIT License text.
 
 #### Controller / stability
 - Keep `onblock` REJECTING trace out of warn during sync/replay ([`0b9aca87c`](https://github.com/eosrio/spring/commit/0b9aca87c)).
