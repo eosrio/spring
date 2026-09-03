@@ -552,7 +552,8 @@ inline std::string EncodeBase58(const unsigned char* pbegin, const unsigned char
 // Encode a byte vector as a base58-encoded string
 inline std::string EncodeBase58(const std::vector<unsigned char>& vch, const fc::yield_function_t& yield)
 {
-    return EncodeBase58(&vch[0], &vch[0] + vch.size(), yield);
+    if (vch.empty()) return {};
+    return EncodeBase58(vch.data(), vch.data() + vch.size(), yield);
 }
 
 // Decode a base58-encoded string psz into byte vector vchRet
@@ -616,6 +617,8 @@ inline bool DecodeBase58(const std::string& str, std::vector<unsigned char>& vch
 namespace fc {
 
 std::string to_base58( const char* d, size_t s, const fc::yield_function_t& yield ) {
+  if (s == 0) return std::string();
+  FC_ASSERT( d != nullptr, "data pointer cannot be null with non-zero size" );
   return EncodeBase58( (const unsigned char*)d, (const unsigned char*)d+s, yield );
 }
 

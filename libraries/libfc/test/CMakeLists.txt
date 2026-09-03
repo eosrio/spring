@@ -11,12 +11,15 @@ add_executable( test_fc
         io/test_random_access_file.cpp
         io/test_raw.cpp
         io/test_tracked_storage.cpp
+        io/test_bounded_datastream.cpp
         network/test_message_buffer.cpp
         scoped_exit/test_scoped_exit.cpp
         static_variant/test_static_variant.cpp
         variant/test_variant.cpp
         variant/test_variant_dynamic_bitset.cpp
         variant_estimated_size/test_variant_estimated_size.cpp
+        test_base58.cpp
+        test_m1_adversarial.cpp
         test_base64.cpp
         test_escape_str.cpp
         test_bls.cpp
