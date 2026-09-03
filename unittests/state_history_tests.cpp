@@ -12,11 +12,13 @@
 #include <eosio/chain/global_property_object.hpp>
 
 #include "test_cfd_transaction.hpp"
+#include <random>
 
 #include <eosio/stream.hpp>
 #include <eosio/ship_protocol.hpp>
 #include <boost/iostreams/device/back_inserter.hpp>
 #include <boost/iostreams/copy.hpp>
+#include "../plugins/state_history_plugin/include/eosio/state_history_plugin/session.hpp"
 
 using namespace eosio::chain;
 using namespace eosio::testing;
@@ -902,4 +904,255 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(test_corrupted_log_recovery, T, state_history_test
    BOOST_CHECK(get_decompressed_entry(new_chain.chain_state_log,10).size());
 }
 
+BOOST_AUTO_TEST_CASE(test_history_pack_big_bytes_shared_blob) {
+   // Empty shared_blob serialization should pack size 0 without calling ds.write(nullptr, 0)
+   {
+      eosio::chain::shared_blob empty_blob;
+      BOOST_CHECK_EQUAL(empty_blob.size(), 0u);
+      BOOST_CHECK(empty_blob.data() == nullptr);
+
+      std::vector<char> buffer(1024);
+      fc::datastream<char*> ds(buffer.data(), buffer.size());
+      fc::history_pack_big_bytes(ds, empty_blob);
+
+      BOOST_CHECK_EQUAL(ds.tellp(), 1u); // unsigned_int(0) packs to 1 byte
+
+      fc::datastream<const char*> read_ds(buffer.data(), ds.tellp());
+      fc::unsigned_int unpacked_size;
+      fc::raw::unpack(read_ds, unpacked_size);
+      BOOST_CHECK_EQUAL(unpacked_size.value, 0u);
+   }
+
+   // Non-empty shared_blob serialization
+   {
+      std::string sample = "state_history_payload";
+      eosio::chain::shared_blob blob{std::string_view(sample)};
+      BOOST_CHECK_EQUAL(blob.size(), sample.size());
+
+      std::vector<char> buffer(1024);
+      fc::datastream<char*> ds(buffer.data(), buffer.size());
+      fc::history_pack_big_bytes(ds, blob);
+
+      fc::datastream<const char*> read_ds(buffer.data(), ds.tellp());
+      fc::unsigned_int unpacked_size;
+      fc::raw::unpack(read_ds, unpacked_size);
+      BOOST_CHECK_EQUAL(unpacked_size.value, sample.size());
+
+      std::string read_payload(unpacked_size.value, '\0');
+      read_ds.read(read_payload.data(), unpacked_size.value);
+      BOOST_CHECK_EQUAL(sample, read_payload);
+   }
+
+   // 1-byte small shared_blob
+   {
+      std::string sample = "Q";
+      eosio::chain::shared_blob blob{std::string_view(sample)};
+      std::vector<char> buffer(64);
+      fc::datastream<char*> ds(buffer.data(), buffer.size());
+      fc::history_pack_big_bytes(ds, blob);
+
+      BOOST_CHECK_EQUAL(ds.tellp(), 2u); // 1 byte varuint + 1 byte data
+
+      fc::datastream<const char*> read_ds(buffer.data(), ds.tellp());
+      fc::unsigned_int sz;
+      fc::raw::unpack(read_ds, sz);
+      BOOST_CHECK_EQUAL(sz.value, 1u);
+      char val = 0;
+      read_ds.read(&val, 1);
+      BOOST_CHECK_EQUAL(val, 'Q');
+   }
+
+   // Large shared_blob serialization (512 KB)
+   {
+      std::string large_payload(512 * 1024, 'K');
+      eosio::chain::shared_blob large_blob{std::string_view(large_payload)};
+      std::vector<char> buffer(large_payload.size() + 16);
+      fc::datastream<char*> ds(buffer.data(), buffer.size());
+      fc::history_pack_big_bytes(ds, large_blob);
+
+      fc::datastream<const char*> read_ds(buffer.data(), ds.tellp());
+      fc::unsigned_int unpacked_size;
+      fc::raw::unpack(read_ds, unpacked_size);
+      BOOST_CHECK_EQUAL(unpacked_size.value, large_payload.size());
+
+      std::string read_payload(unpacked_size.value, '\0');
+      read_ds.read(read_payload.data(), unpacked_size.value);
+      BOOST_CHECK_EQUAL(large_payload, read_payload);
+   }
+
+   // Sequential serialization of empty and non-empty shared_blobs into the same stream
+   {
+      eosio::chain::shared_blob empty1;
+      eosio::chain::shared_blob blob1{std::string_view("first")};
+      eosio::chain::shared_blob empty2;
+      eosio::chain::shared_blob blob2{std::string_view("second_much_longer_payload_with_symbols!@#")};
+
+      std::vector<char> buffer(1024);
+      fc::datastream<char*> ds(buffer.data(), buffer.size());
+      fc::history_pack_big_bytes(ds, empty1);
+      fc::history_pack_big_bytes(ds, blob1);
+      fc::history_pack_big_bytes(ds, empty2);
+      fc::history_pack_big_bytes(ds, blob2);
+
+      fc::datastream<const char*> read_ds(buffer.data(), ds.tellp());
+      fc::unsigned_int sz;
+
+      // 1. empty1
+      fc::raw::unpack(read_ds, sz);
+      BOOST_CHECK_EQUAL(sz.value, 0u);
+
+      // 2. blob1
+      fc::raw::unpack(read_ds, sz);
+      BOOST_CHECK_EQUAL(sz.value, 5u);
+      std::string out1(sz.value, '\0');
+      read_ds.read(out1.data(), sz.value);
+      BOOST_CHECK_EQUAL(out1, "first");
+
+      // 3. empty2
+      fc::raw::unpack(read_ds, sz);
+      BOOST_CHECK_EQUAL(sz.value, 0u);
+
+      // 4. blob2
+      fc::raw::unpack(read_ds, sz);
+      BOOST_CHECK_EQUAL(sz.value, blob2.size());
+      std::string out2(sz.value, '\0');
+      read_ds.read(out2.data(), sz.value);
+      BOOST_CHECK_EQUAL(out2, std::string(blob2.data(), blob2.size()));
+   }
+}
+
+BOOST_AUTO_TEST_CASE(ship_status_request_queue_bounds_test) {
+   using eosio::state_history::status_request_queue;
+   using eosio::state_history::status_request_queue_limit_exceeded;
+
+   // Test 1: Default capacity (100)
+   status_request_queue queue;
+   BOOST_CHECK_EQUAL(queue.size(), 0u);
+   BOOST_CHECK(queue.empty());
+   BOOST_CHECK_EQUAL(queue.max_size(), 100u);
+
+   // Fill queue to capacity with 100 status requests
+   for (size_t i = 0; i < 100; ++i) {
+      bool is_v1 = (i % 2 == 1);
+      BOOST_CHECK(queue.try_append(is_v1));
+      BOOST_CHECK_EQUAL(queue.size(), i + 1);
+   }
+   BOOST_CHECK_EQUAL(queue.size(), 100u);
+   BOOST_CHECK(!queue.empty());
+
+   // 101st request must fail to append
+   BOOST_CHECK(!queue.try_append(false));
+   BOOST_CHECK_EQUAL(queue.size(), 100u);
+
+   // Asserting on try_append throws status_request_queue_limit_exceeded
+   auto append_or_throw = [](status_request_queue& q, bool is_v1) {
+      EOS_ASSERT(q.try_append(is_v1),
+                 status_request_queue_limit_exceeded,
+                 "State history status request queue limit exceeded");
+   };
+   BOOST_CHECK_THROW(append_or_throw(queue, true), status_request_queue_limit_exceeded);
+   BOOST_CHECK_EQUAL(queue.size(), 100u);
+
+   // Extract drains the queue
+   std::deque<bool> extracted = queue.extract();
+   BOOST_CHECK_EQUAL(extracted.size(), 100u);
+   BOOST_CHECK_EQUAL(queue.size(), 0u);
+   BOOST_CHECK(queue.empty());
+
+   for (size_t i = 0; i < 100; ++i) {
+      BOOST_CHECK_EQUAL(extracted[i], (i % 2 == 1));
+   }
+
+   // After draining, appending succeeds again
+   BOOST_CHECK(queue.try_append(true));
+   BOOST_CHECK_EQUAL(queue.size(), 1u);
+
+   // Test 2: Custom bounded capacity
+   status_request_queue small_queue(3);
+   BOOST_CHECK_EQUAL(small_queue.max_size(), 3u);
+   BOOST_CHECK(small_queue.try_append(false));
+   BOOST_CHECK(small_queue.try_append(true));
+   BOOST_CHECK(small_queue.try_append(false));
+   BOOST_CHECK_EQUAL(small_queue.size(), 3u);
+
+   // Exceeding custom capacity is rejected
+   BOOST_CHECK(!small_queue.try_append(true));
+   BOOST_CHECK_THROW(append_or_throw(small_queue, true), status_request_queue_limit_exceeded);
+   BOOST_CHECK_EQUAL(small_queue.size(), 3u);
+}
+
+BOOST_AUTO_TEST_CASE(ship_status_request_queue_adversarial_flood_and_churn_test) {
+   using eosio::state_history::status_request_queue;
+   using eosio::state_history::status_request_queue_limit_exceeded;
+
+   // 1. Zero-capacity queue boundary: must reject everything immediately
+   {
+      status_request_queue zero_q(0);
+      BOOST_CHECK_EQUAL(zero_q.size(), 0u);
+      BOOST_CHECK_EQUAL(zero_q.max_size(), 0u);
+      BOOST_CHECK(zero_q.empty());
+      BOOST_CHECK(!zero_q.try_append(true));
+      BOOST_CHECK(!zero_q.try_append(false));
+      BOOST_CHECK_EQUAL(zero_q.size(), 0u);
+   }
+
+   // 2. Massive high-churn burst flooding: 1,000 bursts of 50 requests (50,000 total)
+   {
+      status_request_queue q(50);
+      std::mt19937 rng(42);
+      std::bernoulli_distribution dist(0.5);
+
+      constexpr size_t NUM_BURSTS = 1000;
+      for (size_t burst = 0; burst < NUM_BURSTS; ++burst) {
+         std::vector<bool> expected_items;
+         for (size_t i = 0; i < 50; ++i) {
+            bool val = dist(rng);
+            expected_items.push_back(val);
+            BOOST_CHECK(q.try_append(val));
+         }
+         BOOST_CHECK_EQUAL(q.size(), 50u);
+         // 51st request must fail
+         BOOST_CHECK(!q.try_append(true));
+
+         // Extract drains and preserves exact FIFO ordering
+         std::deque<bool> extracted = q.extract();
+         BOOST_CHECK_EQUAL(extracted.size(), 50u);
+         BOOST_CHECK_EQUAL(q.size(), 0u);
+         BOOST_CHECK(q.empty());
+
+         for (size_t i = 0; i < 50; ++i) {
+            BOOST_CHECK_EQUAL(extracted[i], expected_items[i]);
+         }
+      }
+   }
+
+   // 3. Clear method verification
+   {
+      status_request_queue q(10);
+      for (int i = 0; i < 5; ++i) q.try_append(true);
+      BOOST_CHECK_EQUAL(q.size(), 5u);
+      q.clear();
+      BOOST_CHECK_EQUAL(q.size(), 0u);
+      BOOST_CHECK(q.empty());
+      BOOST_CHECK(q.try_append(false));
+      BOOST_CHECK_EQUAL(q.size(), 1u);
+   }
+
+   // 4. Extract swap determinism: ensures queue is deterministically empty post-extract and resets size to 0
+   {
+      status_request_queue q(10);
+      for (int i = 0; i < 7; ++i) BOOST_CHECK(q.try_append(i % 2 == 0));
+      BOOST_CHECK_EQUAL(q.size(), 7u);
+      auto extracted = q.extract();
+      BOOST_CHECK_EQUAL(extracted.size(), 7u);
+      BOOST_CHECK_EQUAL(q.size(), 0u);
+      BOOST_CHECK(q.empty());
+      // Post-extract appending works up to max_size deterministically
+      for (int i = 0; i < 10; ++i) BOOST_CHECK(q.try_append(true));
+      BOOST_CHECK_EQUAL(q.size(), 10u);
+      BOOST_CHECK_EQUAL(q.try_append(true), false);
+   }
+}
+
 BOOST_AUTO_TEST_SUITE_END()
+

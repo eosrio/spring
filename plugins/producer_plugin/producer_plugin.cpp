@@ -2635,16 +2635,17 @@ producer_plugin_impl::handle_push_result(const transaction_metadata_ptr&        
          pr.failed              = true;
          const fc::exception& e = *trace->except;
          if (e.code() != tx_duplicate::code_value) {
-            fc_tlog(_log, "Subjective bill for failed ${a}: ${b} elapsed ${t}us, time ${r}us",
-                    ("a", first_auth)("b", sub_bill)("t", trace->elapsed)("r", end - start));
-            if (!disable_subjective_enforcement) // subjectively bill failure when producing since not in objective cpu account billing
+            if (!disable_subjective_enforcement && trx->satisfied_authorizations()) {
+               fc_tlog(_log, "Subjective bill for failed ${a}: ${b} elapsed ${t}us, time ${r}us",
+                       ("a", first_auth)("b", sub_bill)("t", trace->elapsed)("r", end - start));
                subjective_bill.subjective_bill_failure(first_auth, trace->elapsed, fc::time_point::now());
+            }
 
             log_trx_results(trx, trace);
             // this failed our configured maximum transaction time, we don't want to replay it
             fc_tlog(_log, "Failed ${c} trx, auth: ${a}, prev billed: ${p}us, ran: ${r}us, id: ${id}, except: ${e}",
                     ("c", e.code())("a", first_auth)("p", prev_billed_cpu_time_us)("r", end - start)("id", trx->id())("e", e));
-            if (!disable_subjective_enforcement)
+            if (!disable_subjective_enforcement && trx->satisfied_authorizations())
                _account_fails.add(first_auth, e);
          }
          if (next) {

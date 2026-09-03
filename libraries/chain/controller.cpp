@@ -3042,6 +3042,7 @@ struct controller_impl {
 
       transaction_trace_ptr trace;
       try {
+         trx->declared_auths_satisfied = false;
          auto start = fc::time_point::now();
          const bool check_auth = !skip_auth_check() && !trx->implicit() && !trx->is_read_only();
          const fc::microseconds sig_cpu_usage = trx->signature_cpu_usage();
@@ -3101,6 +3102,7 @@ struct controller_impl {
                        false,
                        trx->is_dry_run()
                );
+               trx->declared_auths_satisfied = true;
             }
             trx_context.exec();
             trx_context.finalize(); // Automatically rounds up network and CPU usage in trace and bills payers if successful
@@ -3356,8 +3358,20 @@ struct controller_impl {
                   ilog("Interrupt of onblock ${bn}", ("bn", chain_head.block_num() + 1));
                   throw *onblock_trace->except;
                }
-               wlog("onblock ${block_num} is REJECTING: ${entire_trace}",
-                    ("block_num", chain_head.block_num() + 1)("entire_trace", onblock_trace));
+               // A failing onblock is deterministic and benign: the block still applies, the
+               // schedule/state change is simply dropped, and every node reproduces the same
+               // failure (e.g. the system contract proposing a producer schedule that the
+               // native intrinsic rejects). While syncing or replaying old blocks this would
+               // dump the full onblock trace at warn for every affected block, so only emit the
+               // warning when at/near head; downgrade to debug while catching up. (Uses the same
+               // "caught up" heuristic as update_peer_keys().)
+               if( fc::time_point::now() - when.to_time_point() < fc::minutes(5) ) {
+                  wlog("onblock ${block_num} is REJECTING: ${entire_trace}",
+                       ("block_num", chain_head.block_num() + 1)("entire_trace", onblock_trace));
+               } else {
+                  dlog("onblock ${block_num} is REJECTING: ${entire_trace}",
+                       ("block_num", chain_head.block_num() + 1)("entire_trace", onblock_trace));
+               }
             }
          } catch( const std::bad_alloc& e ) {
             elog( "on block transaction failed due to a std::bad_alloc" );

@@ -37,6 +37,7 @@ class transaction_metadata {
    public:
       bool                                                       accepted = false;       // not thread safe
       uint32_t                                                   billed_cpu_time_us = 0; // not thread safe
+      bool                                                       declared_auths_satisfied = false; // not thread safe
 
    private:
       struct private_type{};
@@ -76,6 +77,8 @@ class transaction_metadata {
       bool is_dry_run() const { return _trx_type == trx_type::dry_run; };
       bool is_read_only() const { return _trx_type == trx_type::read_only; };
       bool is_transient() const { return _trx_type == trx_type::read_only || _trx_type == trx_type::dry_run; };
+      bool satisfied_authorizations() const { return declared_auths_satisfied; }
+      void set_satisfied_authorizations(bool v = true) { declared_auths_satisfied = v; }
 
       /// Thread safe.
       /// @returns transaction_metadata_ptr or exception via future
