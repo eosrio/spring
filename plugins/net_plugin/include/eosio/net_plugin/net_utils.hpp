@@ -157,6 +157,30 @@ namespace detail {
       return {std::move(listen_addr), block_sync_rate_limit};
    }
 
+   enum class block_notice_action {
+      have_block,
+      missing_previous,
+      missing_with_previous
+   };
+
+   inline block_notice_action classify_block_notice(bool have_block, bool have_previous) {
+      if (have_block) {
+         return block_notice_action::have_block;
+      }
+      if (!have_previous) {
+         return block_notice_action::missing_previous;
+      }
+      return block_notice_action::missing_with_previous;
+   }
+
+   inline bool block_notice_marks_progress(block_notice_action action) {
+      return action == block_notice_action::have_block;
+   }
+
+   inline bool block_notice_marks_progress(bool have_block) {
+      return have_block;
+   }
+
 } // namespace eosio::net_utils
 
 FC_REFLECT(eosio::net_utils::endpoint, (host)(port))

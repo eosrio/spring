@@ -5,17 +5,55 @@
 
 #include <eosio/chain/types.hpp>
 #include <eosio/chain/controller.hpp>
+#include <eosio/chain/exceptions.hpp>
+#include <eosio/chain/application.hpp>
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/local/stream_protocol.hpp>
 #include <boost/asio/error.hpp>
+#include <boost/asio/use_awaitable.hpp>
+#include <boost/asio/as_tuple.hpp>
+#include <boost/asio/co_spawn.hpp>
 #include <boost/beast/websocket.hpp>
 #include <memory>
 
 extern const char* const state_history_plugin_abi;
 
 namespace eosio::state_history {
+
+using appbase::app;
+
+FC_DECLARE_DERIVED_EXCEPTION( status_request_queue_limit_exceeded, chain::plugin_exception,
+                              3240001, "State history status request queue limit exceeded" );
+
+class status_request_queue {
+public:
+   static constexpr size_t default_max_size = 100;
+
+   explicit status_request_queue(size_t max_size = default_max_size) : _max_size(max_size) {}
+
+   bool try_append(bool is_v1) {
+      if (_queue.size() >= _max_size) {
+         return false;
+      }
+      _queue.emplace_back(is_v1);
+      return true;
+   }
+
+   std::deque<bool> extract() {
+      return std::move(_queue);
+   }
+
+   size_t size() const { return _queue.size(); }
+   bool empty() const { return _queue.empty(); }
+   size_t max_size() const { return _max_size; }
+   void clear() { _queue.clear(); }
+
+private:
+   std::deque<bool> _queue;
+   size_t _max_size;
+};
 
 class session_base {
 public:
@@ -152,7 +190,9 @@ private:
                 */
                std::visit(chain::overloaded {
                   [&self]<typename GetStatusRequestV0orV1, typename = std::enable_if_t<std::is_base_of_v<get_status_request_v0, GetStatusRequestV0orV1>>>(const GetStatusRequestV0orV1&) {
-                     self.queued_status_requests.emplace_back(std::is_same_v<GetStatusRequestV0orV1, get_status_request_v1>);
+                     EOS_ASSERT(self.queued_status_requests.try_append(std::is_same_v<GetStatusRequestV0orV1, get_status_request_v1>),
+                                status_request_queue_limit_exceeded,
+                                "State history status request queue limit exceeded");
                   },
                   [&self]<typename GetBlocksRequestV0orV1, typename = std::enable_if_t<std::is_base_of_v<get_blocks_request_v0, GetBlocksRequestV0orV1>>>(const GetBlocksRequestV0orV1& gbr) {
                      self.current_blocks_request_v1_finality.reset();
@@ -240,7 +280,7 @@ private:
                /**
                 * This lambda executes on the main thread; upon returning, the enclosing coroutine continues execution on the connection's strand
                 */
-               status_requests = std::move(self.queued_status_requests);
+               status_requests = self.queued_status_requests.extract();
 
                //decide what block -- if any -- to send out
                const chain::block_num_type latest_to_consider = self.current_blocks_request.irreversible_only ?
@@ -321,7 +361,7 @@ private:
    std::atomic_flag                  has_logged_exception;  //left as atomic_flag for useful test_and_set() interface
 
    ///these items must only ever be touched on the main thread
-   std::deque<bool>                  queued_status_requests;  //false for v0, true for v1
+   status_request_queue              queued_status_requests;
 
    get_blocks_request_v0             current_blocks_request;
    std::optional<bool>               current_blocks_request_v1_finality; //unset: current request is v0; set means v1; true/false is if finality requested

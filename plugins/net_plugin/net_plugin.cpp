@@ -917,6 +917,11 @@ namespace eosio {
       bool process_next_block_message(uint32_t message_length);
       bool process_next_trx_message(uint32_t message_length);
       bool process_next_vote_message(uint32_t message_length);
+      void advance_to_frame_end(size_t remaining) {
+         if (remaining > 0) {
+            pending_message_buffer.advance_read_ptr(remaining);
+         }
+      }
       void update_endpoints(const tcp::endpoint& endpoint = tcp::endpoint());
 
       void send_gossip_bp_peers_initial_message();
@@ -2990,7 +2995,8 @@ namespace eosio {
          auto now = latest_msg_time = std::chrono::steady_clock::now();
 
          // if next message is a block we already have, exit early
-         auto peek_ds = pending_message_buffer.create_peek_datastream();
+         auto raw_peek_ds = pending_message_buffer.create_peek_datastream();
+         fc::bounded_datastream peek_ds( raw_peek_ds, message_length );
          unsigned_int which{};
          fc::raw::unpack( peek_ds, which );
 
@@ -3004,9 +3010,11 @@ namespace eosio {
          } else if( net_msg == msg_type_t::vote_message ) {
             return process_next_vote_message( message_length );
          } else {
-            auto ds = pending_message_buffer.create_datastream();
+            auto raw_ds = pending_message_buffer.create_datastream();
+            fc::bounded_datastream ds( raw_ds, message_length );
             net_message msg;
             fc::raw::unpack( ds, msg );
+            advance_to_frame_end( ds.remaining() );
             msg_handler m( shared_from_this() );
             std::visit( m, msg );
          }
@@ -3021,7 +3029,8 @@ namespace eosio {
 
    // called from connection strand
    bool connection::process_next_block_message(uint32_t message_length) {
-      auto peek_ds = pending_message_buffer.create_peek_datastream();
+      auto raw_peek_ds = pending_message_buffer.create_peek_datastream();
+      fc::bounded_datastream peek_ds( raw_peek_ds, message_length );
       unsigned_int which{};
       fc::raw::unpack( peek_ds, which ); // throw away
       block_header bh;
@@ -3070,12 +3079,14 @@ namespace eosio {
             return true;
       }
 
-      auto mb_ds = pending_message_buffer.create_datastream();
+      auto raw_mb_ds = pending_message_buffer.create_datastream();
+      fc::bounded_datastream mb_ds( raw_mb_ds, message_length );
       fc::raw::unpack( mb_ds, which );
 
       fc::datastream_mirror ds(mb_ds, message_length);
       shared_ptr<signed_block> ptr = std::make_shared<signed_block>();
       fc::raw::unpack( ds, *ptr );
+      advance_to_frame_end( mb_ds.remaining() );
 
       bool has_webauthn_sig = ptr->producer_signature.is_webauthn();
 
@@ -3111,12 +3122,14 @@ namespace eosio {
 
       const unsigned long trx_in_progress_sz = this->trx_in_progress_size.load();
 
-      auto ds = pending_message_buffer.create_datastream();
+      auto raw_ds = pending_message_buffer.create_datastream();
+      fc::bounded_datastream ds( raw_ds, message_length );
       unsigned_int which{};
       fc::raw::unpack( ds, which );
       // shared_ptr<packed_transaction> needed here because packed_transaction_ptr is shared_ptr<const packed_transaction>
       std::shared_ptr<packed_transaction> ptr = std::make_shared<packed_transaction>();
       fc::raw::unpack( ds, *ptr );
+      advance_to_frame_end( ds.remaining() );
       if( trx_in_progress_sz > def_max_trx_in_progress_size) {
          char reason[72];
          snprintf(reason, 72, "Dropping trx, too many trx in progress %lu bytes", trx_in_progress_sz);
@@ -3150,12 +3163,14 @@ namespace eosio {
          return true;
       }
 
-      auto ds = pending_message_buffer.create_datastream();
+      auto raw_ds = pending_message_buffer.create_datastream();
+      fc::bounded_datastream ds( raw_ds, message_length );
       unsigned_int which{};
       fc::raw::unpack( ds, which );
       assert(to_msg_type_t(which) == msg_type_t::vote_message); // verified by caller
       vote_message_ptr ptr = std::make_shared<vote_message>();
       fc::raw::unpack( ds, *ptr );
+      advance_to_frame_end( ds.remaining() );
 
       handle_message( ptr );
       return true;
@@ -3735,10 +3750,17 @@ namespace eosio {
       if (block_header::num_from_id(msg.id) <= fork_db_root_num)
          return;
 
-      latest_blk_time = std::chrono::steady_clock::now();
-      if (my_impl->dispatcher.have_block(msg.id)) {
+      const bool have_blk = my_impl->dispatcher.have_block(msg.id);
+      const bool have_prev = my_impl->dispatcher.have_block(msg.previous);
+      const auto notice_action = net_utils::classify_block_notice(have_blk, have_prev);
+
+      if (net_utils::block_notice_marks_progress(notice_action)) {
+         latest_blk_time = std::chrono::steady_clock::now();
+      }
+
+      if (notice_action == net_utils::block_notice_action::have_block) {
          my_impl->dispatcher.add_peer_block(msg.id, connection_id);
-      } else if (!my_impl->dispatcher.have_block(msg.previous)) { // still don't have previous block
+      } else if (notice_action == net_utils::block_notice_action::missing_previous) { // still don't have previous block
          peer_dlog(this, "Received unknown block notice, checking already requested");
          request_message req;
          req.req_blocks.mode = normal;
@@ -4392,7 +4414,20 @@ namespace eosio {
          resp_expected_period = def_resp_expected_wait;
          max_nodes_per_host = options.at( "p2p-max-nodes-per-host" ).as<int>();
          p2p_accept_transactions = options.at( "p2p-accept-transactions" ).as<bool>();
-         p2p_disable_block_nack = options.at( "p2p-disable-block-nack" ).as<bool>();
+         bool has_producers = false;
+         if (options.count("producer-name")) {
+            const auto& prods = options.at("producer-name").as<std::vector<std::string>>();
+            has_producers = !prods.empty();
+         }
+         if (options.count("p2p-disable-block-nack")) {
+            if (options.at("p2p-disable-block-nack").defaulted() && has_producers) {
+               p2p_disable_block_nack = true;
+            } else {
+               p2p_disable_block_nack = options.at("p2p-disable-block-nack").as<bool>();
+            }
+         } else {
+            p2p_disable_block_nack = has_producers;
+         }
 
          use_socket_read_watermark = options.at( "use-socket-read-watermark" ).as<bool>();
          keepalive_interval = std::chrono::milliseconds( options.at( "p2p-keepalive-interval-ms" ).as<int>() );
@@ -4775,6 +4810,9 @@ namespace eosio {
 
    // called by API
    string connections_manager::connect( const string& host, const string& p2p_address ) {
+      if (auto [h, port, type] = net_utils::split_host_port_type(host); h.empty()) {
+         return "invalid peer address";
+      }
       std::unique_lock g( connections_mtx );
       supplied_peers.insert(host);
       g.unlock();
