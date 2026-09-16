@@ -717,14 +717,16 @@ BOOST_AUTO_TEST_CASE(test_notice_message_huge_ids_claim_short_frame) {
    BOOST_CHECK(unpacked_valid.known_trx.mode == valid.known_trx.mode);
    BOOST_CHECK_EQUAL(unpacked_valid.known_trx.ids.size(), 1u);
 
-   // mode (int64) + pending (uint32) + claimed 1M ids; no id bytes; known_blocks omitted.
-   char            frame[25] = {};
+   // select_ids layout: id_list_modes (unscoped enum, packed as sizeof=4) +
+   // uint32 pending + vector size. No id bytes; known_blocks never reached.
+   char                  frame[25] = {};
    fc::datastream<char*> write_ds(frame, sizeof(frame));
-   fc::raw::pack(write_ds, static_cast<int64_t>(eosio::id_list_modes::normal));
+   fc::raw::pack(write_ds, eosio::id_list_modes::normal);
    fc::raw::pack(write_ds, uint32_t{0});
    fc::raw::pack(write_ds, fc::unsigned_int{MAX_NUM_ARRAY_ELEMENTS});
    const uint32_t crafted = static_cast<uint32_t>(write_ds.tellp());
    BOOST_CHECK_LE(crafted, 25u);
+   BOOST_CHECK_GE(crafted, 11u); // 4 + 4 + 3-byte unsigned_int(1<<20)
 
    fc::message_buffer<1024> mb;
    append_to_message_buffer(mb, &crafted, sizeof(crafted));
