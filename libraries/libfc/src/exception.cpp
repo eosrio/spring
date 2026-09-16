@@ -156,11 +156,17 @@ namespace fc
    std::string exception::to_string()const
    {
       std::string r;
-      r += my->_what;
-      r += " (" + std::to_string( my->_code ) + ") ";
-      for( auto itr = my->_elog.begin(); itr != my->_elog.end(); ) {
-         r += fc::format_string( itr->get_format(), itr->get_data(), true);
-         break;
+      try {
+         r += my->_what;
+         r += " (" + std::to_string( my->_code ) + ") ";
+         for( auto itr = my->_elog.begin(); itr != my->_elog.end(); ) {
+            r += fc::format_string( itr->get_format(), itr->get_data(), true);
+            break;
+         }
+      } catch( std::bad_alloc& ) {
+         throw;
+      } catch( ... ) {
+         r += "<- exception in to_string.";
       }
       return r;
    }

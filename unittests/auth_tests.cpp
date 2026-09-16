@@ -696,4 +696,101 @@ BOOST_AUTO_TEST_CASE_TEMPLATE( delete_auth, TESTER, validating_testers ) { try {
 
 } FC_LOG_AND_RETHROW() }/// delete_auth
 
+// Issue 7: transaction_metadata authorization satisfaction flag
+BOOST_AUTO_TEST_CASE_TEMPLATE( transaction_metadata_auth_satisfied, TESTER, validating_testers ) { try {
+   TESTER chain;
+
+   chain.create_accounts( {"alice"_n, "bob"_n} );
+   chain.produce_block();
+
+   auto act = chain.get_action(config::system_account_name, "reqauth"_n,
+                               {permission_level{"alice"_n, config::active_name}},
+                               fc::mutable_variant_object()("from", "alice"));
+
+   signed_transaction trx;
+   trx.actions.emplace_back(std::move(act));
+   chain.set_transaction_headers(trx);
+
+   auto ptrx_unsigned = std::make_shared<packed_transaction>(trx);
+   auto meta_unsigned = transaction_metadata::start_recover_keys(
+      ptrx_unsigned, chain.control->get_thread_pool(), chain.control->get_chain_id(),
+      fc::microseconds::maximum(), transaction_metadata::trx_type::input
+   ).get();
+
+   // Initial state of declared_auths_satisfied must be false
+   BOOST_CHECK_EQUAL(meta_unsigned->declared_auths_satisfied, false);
+   BOOST_CHECK_EQUAL(meta_unsigned->satisfied_authorizations(), false);
+
+   // Case 1: Unsigned transaction naming alice.
+   // Auth check fails -> trace->except contains unsatisfied_authorization.
+   // declared_auths_satisfied MUST remain false.
+   auto trace1 = chain.control->push_transaction(meta_unsigned, fc::time_point::maximum(), fc::microseconds::maximum(), 0, false, 0);
+   BOOST_REQUIRE(trace1->except);
+   BOOST_CHECK_EQUAL(trace1->except->code(), unsatisfied_authorization::code_value);
+   BOOST_CHECK_EQUAL(meta_unsigned->declared_auths_satisfied, false);
+   BOOST_CHECK_EQUAL(meta_unsigned->satisfied_authorizations(), false);
+
+   // Case 2: Signed by wrong key (bob's key instead of alice's key).
+   // declared_auths_satisfied MUST remain false.
+   signed_transaction trx_wrong_sig = trx;
+   trx_wrong_sig.signatures.clear();
+   trx_wrong_sig.sign( chain.get_private_key("bob"_n, "active"), chain.control->get_chain_id() );
+   auto ptrx_wrong = std::make_shared<packed_transaction>(trx_wrong_sig);
+   auto meta_wrong = transaction_metadata::start_recover_keys(
+      ptrx_wrong, chain.control->get_thread_pool(), chain.control->get_chain_id(),
+      fc::microseconds::maximum(), transaction_metadata::trx_type::input
+   ).get();
+
+   BOOST_CHECK_EQUAL(meta_wrong->declared_auths_satisfied, false);
+   auto trace2 = chain.control->push_transaction(meta_wrong, fc::time_point::maximum(), fc::microseconds::maximum(), 0, false, 0);
+   BOOST_REQUIRE(trace2->except);
+   BOOST_CHECK_EQUAL(trace2->except->code(), unsatisfied_authorization::code_value);
+   BOOST_CHECK_EQUAL(meta_wrong->declared_auths_satisfied, false);
+   BOOST_CHECK_EQUAL(meta_wrong->satisfied_authorizations(), false);
+
+   // Case 3: Validly signed by alice's active key.
+   // Auth check succeeds -> declared_auths_satisfied set to true.
+   signed_transaction trx_valid = trx;
+   trx_valid.signatures.clear();
+   trx_valid.sign( chain.get_private_key("alice"_n, "active"), chain.control->get_chain_id() );
+   auto ptrx_valid = std::make_shared<packed_transaction>(trx_valid);
+   auto meta_valid = transaction_metadata::start_recover_keys(
+      ptrx_valid, chain.control->get_thread_pool(), chain.control->get_chain_id(),
+      fc::microseconds::maximum(), transaction_metadata::trx_type::input
+   ).get();
+
+   BOOST_CHECK_EQUAL(meta_valid->declared_auths_satisfied, false);
+   auto trace3 = chain.control->push_transaction(meta_valid, fc::time_point::maximum(), fc::microseconds::maximum(), 0, false, 0);
+   BOOST_CHECK(!trace3->except);
+   BOOST_CHECK_EQUAL(meta_valid->declared_auths_satisfied, true);
+   BOOST_CHECK_EQUAL(meta_valid->satisfied_authorizations(), true);
+
+   // Case 4: Re-evaluating or resetting (as when retried from unapplied queue).
+   // Set flag to true manually to simulate leftover state; push_transaction must reset it to false before auth check.
+   chain.produce_block();
+   auto act2 = chain.get_action(config::system_account_name, "reqauth"_n,
+                                {permission_level{"bob"_n, config::active_name}},
+                                fc::mutable_variant_object()("from", "bob"));
+   signed_transaction trx2;
+   trx2.actions.emplace_back(std::move(act2));
+   chain.set_transaction_headers(trx2);
+   // Sign with wrong key (alice instead of bob)
+   trx2.sign( chain.get_private_key("alice"_n, "active"), chain.control->get_chain_id() );
+   auto ptrx2 = std::make_shared<packed_transaction>(trx2);
+   auto meta2 = transaction_metadata::start_recover_keys(
+      ptrx2, chain.control->get_thread_pool(), chain.control->get_chain_id(),
+      fc::microseconds::maximum(), transaction_metadata::trx_type::input
+   ).get();
+
+   // Manually set flag to true
+   meta2->declared_auths_satisfied = true;
+   // push_transaction must reset flag to false upon entry, and auth check will fail
+   auto trace4 = chain.control->push_transaction(meta2, fc::time_point::maximum(), fc::microseconds::maximum(), 0, false, 0);
+   BOOST_REQUIRE(trace4->except);
+   BOOST_CHECK_EQUAL(trace4->except->code(), unsatisfied_authorization::code_value);
+   BOOST_CHECK_EQUAL(meta2->declared_auths_satisfied, false);
+   BOOST_CHECK_EQUAL(meta2->satisfied_authorizations(), false);
+
+} FC_LOG_AND_RETHROW() }
+
 BOOST_AUTO_TEST_SUITE_END()

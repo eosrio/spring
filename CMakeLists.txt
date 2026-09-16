@@ -16,7 +16,7 @@ set( CXX_STANDARD_REQUIRED ON)
 set(VERSION_MAJOR 1)
 set(VERSION_MINOR 2)
 set(VERSION_PATCH 3)
-set(VERSION_SUFFIX alpha1)
+set(VERSION_SUFFIX alpha2)
 
 if(VERSION_SUFFIX)
     set(VERSION_FULL "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}-${VERSION_SUFFIX}")
@@ -80,7 +80,7 @@ if(ENABLE_OC AND CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT WIN32)
       # #578: support legacy ORCv1 (LLVM 7-11) AND modern RuntimeDyld path (LLVM 14+, for Ubuntu 24.04/26.04).
       # 12-13 intentionally unsupported (transitional opaque-pointer era, untested for consensus codegen).
       if(LLVM_VERSION_MAJOR VERSION_LESS 7 OR (LLVM_VERSION_MAJOR VERSION_GREATER_EQUAL 12 AND LLVM_VERSION_MAJOR VERSION_LESS 14))
-	      message(FATAL_ERROR "Spring requires an LLVM version 7 through 11")
+	      message(FATAL_ERROR "Spring requires LLVM 7-11 or 14+ (LLVM 12/13 are intentionally unsupported); on Ubuntu 24.04/26.04 install llvm-18-dev")
       endif()
    endif()
 endif()

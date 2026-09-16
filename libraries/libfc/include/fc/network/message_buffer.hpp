@@ -157,6 +157,11 @@ namespace fc {
      *  start).
      */
     void advance_read_ptr(uint32_t bytes) {
+      if (bytes > bytes_to_read()) {
+        FC_THROW_EXCEPTION( out_of_range_exception,
+                            "cannot advance read pointer past write pointer: bytes ${b}, bytes_to_read ${r}",
+                            ("b", bytes)("r", bytes_to_read()) );
+      }
       advance_index(read_ind, bytes);
       if (read_ind == write_ind) {
         reset();

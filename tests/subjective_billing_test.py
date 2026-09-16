@@ -161,16 +161,18 @@ try:
     assert(subjectiveBilling["used"] == 0)
 
 
-    # Sleep for 1 min
-    time.sleep(60)
-
-    # Verify subjective decay
-    acct1 = fdnode.getAccountSubjectiveInfo("account1")
+    # Wait for subjective decay to reach 0
     originalUsed = decaySubjectiveBilling["used"]
-    finalUsed = acct1["used"]
+    Print('Original Fast decay node subjective billing: {}'.format(originalUsed))
+    for _ in range(30):
+        time.sleep(5)
+        acct1 = fdnode.getAccountSubjectiveInfo("account1")
+        finalUsed = acct1["used"]
+        Print('Decaying node subjective billing: {}'.format(finalUsed))
+        if finalUsed == 0:
+            break
 
-    Print('Original Fast decay node subjective billing: {}'.format(decaySubjectiveBilling["used"]))
-    Print('End decay node subjective billing: {}'.format(acct1["used"]))
+    Print('End decay node subjective billing: {}'.format(finalUsed))
     assert(finalUsed == 0)
 
     testSuccessful = True

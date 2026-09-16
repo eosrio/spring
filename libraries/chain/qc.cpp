@@ -71,11 +71,11 @@ void qc_t::verify_basic(const finalizer_policies_t& policies) const {
       EOS_ASSERT(policies.pending_finalizer_policy, invalid_qc,
                  "qc ${bn} contains pending policy signature for nonexistent pending finalizer policy", ("bn", block_num));
 
-      // verify that every finalizer included in both policies voted the same
-      verify_dual_finalizers_votes(policies, active_policy_sig, *pending_policy_sig, block_num);
-
       pending_policy_sig->verify_vote_format(policies.pending_finalizer_policy);
       pending_policy_sig->verify_weights(policies.pending_finalizer_policy);
+
+      // verify that every finalizer included in both policies voted the same
+      verify_dual_finalizers_votes(policies, active_policy_sig, *pending_policy_sig, block_num);
    } else {
       EOS_ASSERT(!policies.pending_finalizer_policy, invalid_qc,
                  "qc ${bn} does not contain pending policy signature for pending finalizer policy", ("bn", block_num));
@@ -86,6 +86,8 @@ void qc_t::verify_basic(const finalizer_policies_t& policies) const {
 bool qc_sig_t::vote_same_at(const qc_sig_t& other, uint32_t my_vote_index, uint32_t other_vote_index) const {
    assert(!strong_votes || my_vote_index < strong_votes->size());
    assert(!weak_votes || my_vote_index < weak_votes->size());
+   assert(!other.strong_votes || other_vote_index < other.strong_votes->size());
+   assert(!other.weak_votes || other_vote_index < other.weak_votes->size());
 
    // We have already verified the same index has not voted both strong
    // and weak for a given qc_sig_t (I or other).
@@ -311,7 +313,7 @@ vote_result_t aggregating_qc_sig_t::add_weak_vote(size_t index, const bls_signat
       break;
 
    case state_t::weak_achieved:
-      if (weak_sum >= max_weak_sum_before_weak_final)
+      if (weak_sum > max_weak_sum_before_weak_final)
          aggregating_state = state_t::weak_final;
       break;
 

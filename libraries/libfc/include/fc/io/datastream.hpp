@@ -211,6 +211,134 @@ private:
    std::vector<char> mirror;
 };
 
+/**
+ * Datastream wrapper that bounds reading and writing up to max_bytes.
+ * Throws fc::out_of_range_exception if any operation attempts to exceed max_bytes.
+ * @tparam DataStream datastream to wrap
+ */
+template <typename DataStream>
+class bounded_datastream {
+public:
+   explicit bounded_datastream( DataStream& ds, size_t max_bytes )
+       : ds(ds), _max_bytes(max_bytes), _total(0) {}
+
+   inline void skip( size_t s ) {
+      if( s > remaining() ) {
+         detail::throw_datastream_range_error( "skip", _max_bytes, int64_t(s - remaining()) );
+      }
+      ds.skip( s );
+      _total += s;
+   }
+
+   inline bool read( char* d, size_t s ) {
+      if( s > remaining() ) {
+         detail::throw_datastream_range_error( "read", _max_bytes, int64_t(s - remaining()) );
+      }
+      if( ds.read( d, s ) ) {
+         _total += s;
+         return true;
+      }
+      return false;
+   }
+
+   inline bool write( const char* d, size_t s ) {
+      if( s > remaining() ) {
+         detail::throw_datastream_range_error( "write", _max_bytes, int64_t(s - remaining()) );
+      }
+      if( ds.write( d, s ) ) {
+         _total += s;
+         return true;
+      }
+      return false;
+   }
+
+   inline bool put( char c ) {
+      return write( &c, 1 );
+   }
+
+   inline bool get( unsigned char& c ) { return read( (char*)&c, 1 ); }
+   inline bool get( char& c ) { return read( &c, 1 ); }
+
+   inline size_t remaining() const {
+      return _max_bytes >= _total ? (_max_bytes - _total) : 0;
+   }
+
+   inline size_t tellp() const { return _total; }
+
+   inline size_t max_bytes() const { return _max_bytes; }
+
+   inline size_t total_read() const { return _total; }
+
+   inline bool valid() const { return _total <= _max_bytes; }
+
+   inline bool seekp( size_t p ) {
+      if( p > _max_bytes ) return false;
+      if( p < _total ) {
+         if constexpr ( requires { ds.seekp(p); } ) {
+            if( ds.seekp( p ) ) {
+               _total = p;
+               return true;
+            }
+            return false;
+         } else {
+            return false;
+         }
+      }
+      size_t diff = p - _total;
+      skip( diff );
+      return true;
+   }
+
+   inline DataStream& storage() { return ds; }
+   inline const DataStream& storage() const { return ds; }
+
+   inline DataStream& unwrapped() { return ds; }
+   inline const DataStream& unwrapped() const { return ds; }
+
+private:
+   DataStream& ds;
+   size_t      _max_bytes;
+   size_t      _total;
+};
+
+template <typename DataStream, typename T>
+requires std::is_arithmetic_v<T>
+inline bounded_datastream<DataStream>& operator<<(bounded_datastream<DataStream>& ds, const T& d) {
+   ds.write( (const char*)&d, sizeof(d) );
+   return ds;
+}
+
+template <typename DataStream, typename T>
+requires std::is_arithmetic_v<T>
+inline bounded_datastream<DataStream>& operator>>(bounded_datastream<DataStream>& ds, T& d) {
+   ds.read( (char*)&d, sizeof(d) );
+   return ds;
+}
+
+template<typename DataStream>
+inline bounded_datastream<DataStream>& operator<<(bounded_datastream<DataStream>& ds, const __int128& d) {
+  ds.write( (const char*)&d, sizeof(d) );
+  return ds;
+}
+
+template<typename DataStream>
+inline bounded_datastream<DataStream>& operator>>(bounded_datastream<DataStream>& ds, __int128& d) {
+  ds.read( (char*)&d, sizeof(d) );
+  return ds;
+}
+
+template<typename DataStream>
+inline bounded_datastream<DataStream>& operator<<(bounded_datastream<DataStream>& ds, const unsigned __int128& d) {
+  ds.write( (const char*)&d, sizeof(d) );
+  return ds;
+}
+
+template<typename DataStream>
+inline bounded_datastream<DataStream>& operator>>(bounded_datastream<DataStream>& ds, unsigned __int128& d) {
+  ds.read( (char*)&d, sizeof(d) );
+  return ds;
+}
+
 
 template<typename ST>
 inline datastream<ST>& operator<<(datastream<ST>& ds, const __int128& d) {

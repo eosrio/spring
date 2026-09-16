@@ -271,6 +271,103 @@ BOOST_AUTO_TEST_CASE(message_buffer_read_peek_bounds) {
    BOOST_CHECK_THROW(mbuff.read(&throw_away_buffer, 1), fc::out_of_range_exception);
 }
 
+BOOST_AUTO_TEST_CASE(message_buffer_advance_read_ptr_bounds) {
+   using my_message_buffer_t = fc::message_buffer<1024>;
+   my_message_buffer_t mbuff;
+   char stuff[100];
+   memset(stuff, 0x5a, sizeof(stuff));
+   memcpy(mbuff.write_ptr(), stuff, sizeof(stuff));
+   mbuff.advance_write_ptr(sizeof(stuff));
+
+   BOOST_CHECK_EQUAL(mbuff.bytes_to_read(), 100u);
+   mbuff.advance_read_ptr(50);
+   BOOST_CHECK_EQUAL(mbuff.bytes_to_read(), 50u);
+
+   // Attempting to advance beyond bytes_to_read() must throw fc::out_of_range_exception
+   BOOST_CHECK_THROW(mbuff.advance_read_ptr(51), fc::out_of_range_exception);
+   BOOST_CHECK_THROW(mbuff.advance_read_ptr(1000), fc::out_of_range_exception);
+
+   // Valid advance up to remaining
+   mbuff.advance_read_ptr(50);
+   BOOST_CHECK_EQUAL(mbuff.bytes_to_read(), 0u);
+
+   // Advancing any non-zero bytes when empty must throw
+   BOOST_CHECK_THROW(mbuff.advance_read_ptr(1), fc::out_of_range_exception);
+}
+
+BOOST_AUTO_TEST_CASE(message_buffer_advance_read_ptr_edge_stress) {
+   using my_mb_t = fc::message_buffer<64>;
+   my_mb_t mbuff;
+
+   // 1. Empty buffer
+   BOOST_CHECK_EQUAL(mbuff.bytes_to_read(), 0u);
+   // Advance 0 bytes on empty buffer must succeed without throwing
+   mbuff.advance_read_ptr(0);
+   BOOST_CHECK_EQUAL(mbuff.bytes_to_read(), 0u);
+
+   // Advance 1 byte on empty buffer must throw
+   BOOST_CHECK_THROW(mbuff.advance_read_ptr(1), fc::out_of_range_exception);
+   // Advance UINT32_MAX on empty buffer must throw
+   BOOST_CHECK_THROW(mbuff.advance_read_ptr(std::numeric_limits<uint32_t>::max()), fc::out_of_range_exception);
+
+   // 2. Partially filled buffer
+   char data[40];
+   memset(data, 0x77, sizeof(data));
+   memcpy(mbuff.write_ptr(), data, sizeof(data));
+   mbuff.advance_write_ptr(sizeof(data));
+   BOOST_CHECK_EQUAL(mbuff.bytes_to_read(), 40u);
+
+   // Advance 0 on non-empty buffer must succeed
+   mbuff.advance_read_ptr(0);
+   BOOST_CHECK_EQUAL(mbuff.bytes_to_read(), 40u);
+
+   // Advance bytes_to_read() + 1 must throw
+   BOOST_CHECK_THROW(mbuff.advance_read_ptr(41), fc::out_of_range_exception);
+   // Advance UINT32_MAX must throw
+   BOOST_CHECK_THROW(mbuff.advance_read_ptr(std::numeric_limits<uint32_t>::max()), fc::out_of_range_exception);
+   // Buffer state must remain intact
+   BOOST_CHECK_EQUAL(mbuff.bytes_to_read(), 40u);
+
+   // Advance exact bytes_to_read()
+   mbuff.advance_read_ptr(40);
+   BOOST_CHECK_EQUAL(mbuff.bytes_to_read(), 0u);
+
+   // 3. Ring buffer wrap
+   // Write 50 bytes, read 40 bytes (10 remaining)
+   memcpy(mbuff.write_ptr(), data, 40);
+   mbuff.advance_write_ptr(40);
+   memcpy(mbuff.write_ptr(), data, 10);
+   mbuff.advance_write_ptr(10);
+   BOOST_CHECK_EQUAL(mbuff.bytes_to_read(), 50u);
+   mbuff.advance_read_ptr(40);
+   BOOST_CHECK_EQUAL(mbuff.bytes_to_read(), 10u);
+
+   // Now write 40 bytes which wraps around circular buffer
+   auto space = mbuff.get_buffer_sequence_for_boost_async_read();
+   size_t copied = 0;
+   for (auto b : space) {
+      size_t chunk = std::min(b.size(), size_t(40) - copied);
+      memcpy(b.data(), data + copied, chunk);
+      copied += chunk;
+      if (copied == 40) break;
+   }
+   mbuff.advance_write_ptr(40);
+   BOOST_CHECK_EQUAL(mbuff.bytes_to_read(), 50u); // 10 from before + 40 wrapped
+
+   // Advance across segment boundary
+   mbuff.advance_read_ptr(15);
+   BOOST_CHECK_EQUAL(mbuff.bytes_to_read(), 35u);
+
+   // Attempt advance 36 (past remaining)
+   BOOST_CHECK_THROW(mbuff.advance_read_ptr(36), fc::out_of_range_exception);
+   BOOST_CHECK_THROW(mbuff.advance_read_ptr(std::numeric_limits<uint32_t>::max()), fc::out_of_range_exception);
+
+   // Advance remaining 35
+   mbuff.advance_read_ptr(35);
+   BOOST_CHECK_EQUAL(mbuff.bytes_to_read(), 0u);
+}
+
+
 BOOST_AUTO_TEST_CASE(message_buffer_read_peek_bounds_multi) {
    using my_message_buffer_t = fc::message_buffer<5>;
    my_message_buffer_t mbuff;
