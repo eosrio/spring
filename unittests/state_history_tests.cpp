@@ -18,7 +18,7 @@
 #include <eosio/ship_protocol.hpp>
 #include <boost/iostreams/device/back_inserter.hpp>
 #include <boost/iostreams/copy.hpp>
-#include "../plugins/state_history_plugin/include/eosio/state_history_plugin/session.hpp"
+#include "../plugins/state_history_plugin/include/eosio/state_history_plugin/status_request_queue.hpp"
 
 using namespace eosio::chain;
 using namespace eosio::testing;
