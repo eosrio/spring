@@ -310,6 +310,8 @@ namespace fc {
         inline bool   get( unsigned char& c ) { return mb.read(&c, 1); }
         inline bool   get( char& c ) { return mb.read(&c, 1); }
 
+        inline size_t remaining() const { return mb.bytes_to_read(); }
+
       private:
         message_buffer<buffer_len>& mb;
   };
@@ -343,6 +345,8 @@ namespace fc {
 
      inline bool get( unsigned char& c ) { return mb.peek( &c, 1, index ); }
      inline bool get( char& c ) { return mb.peek( &c, 1, index ); }
+
+     inline size_t remaining() const { return mb.bytes_to_read_from_index(index); }
 
   private:
      const message_buffer<buffer_len>& mb;

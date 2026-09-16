@@ -10,6 +10,7 @@ add_executable( test_fc
         io/test_json.cpp
         io/test_random_access_file.cpp
         io/test_raw.cpp
+        io/test_unpack_bounds.cpp
         io/test_tracked_storage.cpp
         io/test_bounded_datastream.cpp
         network/test_message_buffer.cpp

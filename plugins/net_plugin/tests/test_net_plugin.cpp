@@ -2,6 +2,8 @@
 #include <eosio/net_plugin/net_utils.hpp>
 #include <eosio/net_plugin/protocol.hpp>
 #include <fc/io/datastream.hpp>
+#include <fc/io/raw.hpp>
+#include <fc/crypto/sha256.hpp>
 #include <fc/network/message_buffer.hpp>
 #include <boost/program_options.hpp>
 
@@ -698,6 +700,46 @@ BOOST_AUTO_TEST_CASE(test_adversarial_connect_concurrency_stress) {
       BOOST_CHECK(!h.empty());
       BOOST_CHECK(!p.empty());
    }
+}
+
+// =============================================================================
+// F1: short P2P notice_message claiming ids.size()==MAX_NUM_ARRAY_ELEMENTS
+// must fail before allocating ~32MiB of sha256.
+// =============================================================================
+
+BOOST_AUTO_TEST_CASE(test_notice_message_huge_ids_claim_short_frame) {
+   eosio::notice_message valid;
+   valid.known_trx.mode    = eosio::id_list_modes::normal;
+   valid.known_blocks.mode = eosio::id_list_modes::none;
+   valid.known_trx.ids     = {fc::sha256::hash("trx-a")};
+   auto packed_valid       = fc::raw::pack(valid);
+   auto unpacked_valid     = fc::raw::unpack<eosio::notice_message>(packed_valid);
+   BOOST_CHECK(unpacked_valid.known_trx.mode == valid.known_trx.mode);
+   BOOST_CHECK_EQUAL(unpacked_valid.known_trx.ids.size(), 1u);
+
+   // mode (int64) + pending (uint32) + claimed 1M ids; no id bytes; known_blocks omitted.
+   char            frame[25] = {};
+   fc::datastream<char*> write_ds(frame, sizeof(frame));
+   fc::raw::pack(write_ds, static_cast<int64_t>(eosio::id_list_modes::normal));
+   fc::raw::pack(write_ds, uint32_t{0});
+   fc::raw::pack(write_ds, fc::unsigned_int{MAX_NUM_ARRAY_ELEMENTS});
+   const uint32_t crafted = static_cast<uint32_t>(write_ds.tellp());
+   BOOST_CHECK_LE(crafted, 25u);
+
+   fc::message_buffer<1024> mb;
+   append_to_message_buffer(mb, &crafted, sizeof(crafted));
+   append_to_message_buffer(mb, frame, crafted);
+
+   uint32_t read_len = 0;
+   auto     idx      = mb.read_index();
+   mb.peek(&read_len, sizeof(read_len), idx);
+   BOOST_CHECK_EQUAL(read_len, crafted);
+   mb.advance_read_ptr(sizeof(read_len));
+
+   auto                  raw_ds = mb.create_datastream();
+   fc::bounded_datastream bds(raw_ds, read_len);
+   eosio::notice_message  evil;
+   BOOST_CHECK_THROW(fc::raw::unpack(bds, evil), fc::assert_exception);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

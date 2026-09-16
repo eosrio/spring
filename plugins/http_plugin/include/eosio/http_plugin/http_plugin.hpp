@@ -117,6 +117,10 @@ namespace eosio {
         // returns true if `category` is enabled in http_plugin
         bool is_enabled(api_category category) const;
 
+        /// Configured Access-Control-Allow-Origin, empty if unset.
+        const std::string& access_control_allow_origin() const;
+        bool access_control_allow_credentials() const;
+
         static bool verbose_errors();
 
         struct get_supported_apis_result {
@@ -276,6 +280,37 @@ namespace eosio {
             throw fc::exception(e);
          }
       } EOS_RETHROW_EXCEPTIONS(chain::invalid_http_request, "Unable to parse valid input from POST body");
+   }
+
+   /**
+    * Policy for unauthenticated control-plane HTTP APIs (producer_rw, snapshot).
+    * Loopback / UNIX bindings stay available for local tooling; non-loopback
+    * exposure and CORS on those listeners require explicit opt-in.
+    */
+   struct unauthenticated_api_http_policy {
+      bool expose_nonloopback       = false;
+      bool allow_control_plane_cors = false;
+   };
+
+   inline void validate_unauthenticated_api_http(const char* api_name,
+                                                 bool on_loopback,
+                                                 bool cors_origin_configured,
+                                                 const unauthenticated_api_http_policy& policy) {
+      if (!on_loopback) {
+         EOS_ASSERT(policy.expose_nonloopback, chain::plugin_config_exception,
+                    "${api} HTTP API is bound to a non-loopback address and has no authentication. "
+                    "Bind it to 127.0.0.1 or a UNIX socket (recommended), or pass the explicit "
+                    "opt-in flag to acknowledge the risk.",
+                    ("api", api_name));
+      }
+      if (cors_origin_configured && !on_loopback) {
+         EOS_ASSERT(policy.allow_control_plane_cors, chain::plugin_config_exception,
+                    "${api} HTTP API is reachable on a non-loopback listener while "
+                    "access-control-allow-origin is set. A browser origin can invoke these "
+                    "unauthenticated RPCs. Remove CORS, bind the API to loopback, or pass "
+                    "--http-allow-control-plane-cors.",
+                    ("api", api_name));
+      }
    }
 }
 

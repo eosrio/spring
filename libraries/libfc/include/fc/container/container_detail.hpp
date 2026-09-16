@@ -2,6 +2,7 @@
 
 #include <fc/variant.hpp>
 #include <fc/io/raw_fwd.hpp>
+#include <fc/io/raw_unpack_bounds.hpp>
 
 namespace fc {
 
@@ -34,6 +35,7 @@ namespace fc {
          inline void unpack_flat_set( Stream& s, Set<T, U...>& value ) {
             unsigned_int size; unpack( s, size );
             FC_ASSERT( size.value <= MAX_NUM_ARRAY_ELEMENTS );
+            assert_claimed_container_fits<Stream, T>( s, size.value );
             value.clear();
             value.reserve( size.value );
             for( uint32_t i = 0; i < size.value; ++i ) {
@@ -68,6 +70,7 @@ namespace fc {
          inline void unpack_flat_map( Stream& s, Map<K, V, U...>& value ) {
             unsigned_int size; unpack( s, size );
             FC_ASSERT( size.value <= MAX_NUM_ARRAY_ELEMENTS );
+            assert_claimed_container_fits<Stream, std::pair<K, V>>( s, size.value );
             value.clear();
             value.reserve( size.value );
             for( uint32_t i = 0; i < size.value; ++i ) {

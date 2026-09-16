@@ -751,3 +751,33 @@ BOOST_FIXTURE_TEST_CASE(requests_in_flight, http_plugin_test_fixture) {
 
 //A warning for future tests: destruction of http_plugin_test_fixture sometimes does not destroy http_plugin's listeners. Tests
 // added in the future should avoid reusing ports of other tests in http_plugin_unit_tests.
+
+BOOST_AUTO_TEST_CASE(unauthenticated_api_http_policy_loopback_ok) {
+   unauthenticated_api_http_policy policy;
+   BOOST_CHECK_NO_THROW(validate_unauthenticated_api_http("producer_rw", true, false, policy));
+   BOOST_CHECK_NO_THROW(validate_unauthenticated_api_http("snapshot", true, true, policy));
+}
+
+BOOST_AUTO_TEST_CASE(unauthenticated_api_http_policy_nonloopback_requires_opt_in) {
+   unauthenticated_api_http_policy policy;
+   BOOST_CHECK_THROW(validate_unauthenticated_api_http("producer_rw", false, false, policy),
+                     chain::plugin_config_exception);
+
+   policy.expose_nonloopback = true;
+   BOOST_CHECK_NO_THROW(validate_unauthenticated_api_http("producer_rw", false, false, policy));
+
+   BOOST_CHECK_THROW(validate_unauthenticated_api_http("snapshot", false, true, policy),
+                     chain::plugin_config_exception);
+
+   policy.allow_control_plane_cors = true;
+   BOOST_CHECK_NO_THROW(validate_unauthenticated_api_http("snapshot", false, true, policy));
+}
+
+BOOST_AUTO_TEST_CASE(reject_wildcard_cors_with_credentials) {
+   const char* test_name = bu::framework::current_test_case().p_name->c_str();
+   BOOST_TEST(app_log({test_name, "--plugin=eosio::http_plugin",
+                                 "--http-server-address", "127.0.0.1:8893",
+                                 "--access-control-allow-origin", "*",
+                                 "--access-control-allow-credentials"}).contains(
+      "cannot be combined with access-control-allow-credentials"));
+}
