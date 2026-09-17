@@ -711,7 +711,7 @@ BOOST_AUTO_TEST_CASE(test_notice_message_huge_ids_claim_short_frame) {
    eosio::notice_message valid;
    valid.known_trx.mode    = eosio::id_list_modes::normal;
    valid.known_blocks.mode = eosio::id_list_modes::none;
-   valid.known_trx.ids     = {fc::sha256::hash("trx-a")};
+   valid.known_trx.ids     = {fc::sha256::hash(std::string("trx-a"))};
    auto packed_valid       = fc::raw::pack(valid);
    auto unpacked_valid     = fc::raw::unpack<eosio::notice_message>(packed_valid);
    BOOST_CHECK(unpacked_valid.known_trx.mode == valid.known_trx.mode);

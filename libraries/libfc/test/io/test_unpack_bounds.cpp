@@ -138,7 +138,7 @@ BOOST_AUTO_TEST_CASE(bounded_datastream_notice_like_short_frame) {
    notice_select_ids valid;
    valid.mode    = 1;
    valid.pending = 0;
-   valid.ids     = {sha256::hash("a"), sha256::hash("b")};
+   valid.ids     = {sha256::hash(std::string("a")), sha256::hash(std::string("b"))};
    auto packed   = fc::raw::pack(valid);
    auto unpacked = fc::raw::unpack<notice_select_ids>(packed);
    BOOST_CHECK_EQUAL(unpacked.mode, valid.mode);
