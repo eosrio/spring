@@ -38,7 +38,10 @@ namespace fc { namespace raw { namespace detail {
          return 0;
       } else {
          datastream<size_t> ps;
-         T dummy{};
+         // Default-initialize (T dummy;), not T dummy{}. Copy-list-initialization
+         // cannot invoke explicit default constructors such as
+         // chainbase::shared_cow_vector().
+         T dummy;
          fc::raw::pack(ps, dummy);
          return static_cast<uint64_t>(ps.tellp());
       }
