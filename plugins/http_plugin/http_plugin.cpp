@@ -374,6 +374,10 @@ namespace eosio {
              "Number of worker threads in http thread pool")
             ("http-keep-alive", bpo::value<bool>()->default_value(true),
              "If set to false, do not keep HTTP connections alive, even if client requests.")
+            ("http-allow-control-plane-cors", bpo::bool_switch()->default_value(false),
+             "Allow Access-Control-Allow-Origin to be configured while an unauthenticated "
+             "control-plane API (producer_rw, snapshot) is bound to a non-loopback address. "
+             "Without this flag that combination is refused. Loopback / UNIX bindings are unaffected.")
             ;
    }
 
@@ -471,6 +475,22 @@ namespace eosio {
          }
          my->plugin_state->server_header = current_http_plugin_defaults.server_header;
 
+         // Read CORS from the variables_map. Option notifiers may run after
+         // plugin_initialize, so plugin_state may still be empty here.
+         std::string cors_origin;
+         if (options.count("access-control-allow-origin"))
+            cors_origin = options.at("access-control-allow-origin").as<string>();
+         const bool cors_credentials = options.count("access-control-allow-credentials") &&
+                                       options.at("access-control-allow-credentials").as<bool>();
+         if (!cors_origin.empty())
+            my->plugin_state->access_control_allow_origin = cors_origin;
+         my->plugin_state->access_control_allow_credentials =
+               my->plugin_state->access_control_allow_credentials || cors_credentials;
+
+         EOS_ASSERT(!(cors_origin == "*" && cors_credentials),
+                    chain::plugin_config_exception,
+                    "access-control-allow-origin=* cannot be combined with access-control-allow-credentials=true "
+                    "(browsers treat this as an invalid CORS configuration and it amplifies CSRF risk)");
 
          //watch out for the returns above when adding new code here
       } FC_LOG_AND_RETHROW()
@@ -616,6 +636,14 @@ namespace eosio {
                             const auto& [address, categories] = entry;
                             return categories.contains(category);
                          });
+   }
+
+   const std::string& http_plugin::access_control_allow_origin() const {
+      return my->plugin_state->access_control_allow_origin;
+   }
+
+   bool http_plugin::access_control_allow_credentials() const {
+      return my->plugin_state->access_control_allow_credentials;
    }
 
    bool http_plugin::verbose_errors() {

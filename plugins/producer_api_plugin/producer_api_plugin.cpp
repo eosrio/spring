@@ -4,7 +4,10 @@
 #include <fc/time.hpp>
 #include <fc/variant.hpp>
 
+#include <boost/program_options.hpp>
 #include <chrono>
+
+namespace bpo = boost::program_options;
 
 namespace eosio { namespace detail {
   struct producer_api_plugin_response {
@@ -88,6 +91,16 @@ using namespace eosio;
      eosio::detail::producer_api_plugin_response result{"ok"};
 
 
+void producer_api_plugin::set_program_options(options_description&, options_description& cfg) {
+   cfg.add_options()
+      ("http-expose-nonloopback-producer-api", bpo::bool_switch()->default_value(false),
+       "Allow producer_rw and snapshot HTTP APIs to bind to non-loopback addresses. "
+       "These endpoints have no authentication and can pause/resume production, change "
+       "runtime options, manage snapshots, and schedule protocol features. Default is "
+       "false: non-loopback exposure is refused at startup. Loopback and UNIX socket "
+       "bindings do not require this option.");
+}
+
 void producer_api_plugin::plugin_startup() {
    dlog("starting producer_api_plugin");
    // lifetime of plugin is lifetime of application
@@ -147,6 +160,20 @@ void producer_api_plugin::plugin_startup() {
 void producer_api_plugin::plugin_initialize(const variables_map& options) {
    try {
       const auto& _http_plugin = app().get_plugin<http_plugin>();
+      unauthenticated_api_http_policy policy;
+      policy.expose_nonloopback = options.at("http-expose-nonloopback-producer-api").as<bool>();
+      if (options.count("http-allow-control-plane-cors"))
+         policy.allow_control_plane_cors = options.at("http-allow-control-plane-cors").as<bool>();
+
+      const bool cors_origin_configured = !_http_plugin.access_control_allow_origin().empty();
+
+      validate_unauthenticated_api_http("producer_rw",
+                                        _http_plugin.is_on_loopback(api_category::producer_rw),
+                                        cors_origin_configured, policy);
+      validate_unauthenticated_api_http("snapshot",
+                                        _http_plugin.is_on_loopback(api_category::snapshot),
+                                        cors_origin_configured, policy);
+
       if( !_http_plugin.is_on_loopback(api_category::producer_rw)) {
          wlog( "\n"
                "**********SECURITY WARNING**********\n"
@@ -154,6 +181,7 @@ void producer_api_plugin::plugin_initialize(const variables_map& options) {
                "* --       Producer RW API      -- *\n"
                "* - EXPOSED to the LOCAL NETWORK - *\n"
                "* - USE ONLY ON SECURE NETWORKS! - *\n"
+               "* -- http-expose-nonloopback-producer-api is set -- *\n"
                "*                                  *\n"
                "************************************\n" );
 
@@ -165,6 +193,7 @@ void producer_api_plugin::plugin_initialize(const variables_map& options) {
                "* --         Snapshot API       -- *\n"
                "* - EXPOSED to the LOCAL NETWORK - *\n"
                "* - USE ONLY ON SECURE NETWORKS! - *\n"
+               "* -- http-expose-nonloopback-producer-api is set -- *\n"
                "*                                  *\n"
                "************************************\n" );
 

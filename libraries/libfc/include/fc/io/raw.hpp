@@ -11,6 +11,7 @@
 #include <fc/safe.hpp>
 #include <fc/static_variant.hpp>
 #include <fc/io/raw_fwd.hpp>
+#include <fc/io/raw_unpack_bounds.hpp>
 #include <fc/crypto/hex.hpp>
 #include <fc/bitutil.hpp>
 
@@ -298,6 +299,7 @@ namespace fc {
     template<typename Stream> inline void unpack( Stream& s, std::vector<char>& value ) {
       unsigned_int size; fc::raw::unpack( s, size );
       FC_ASSERT( size.value <= MAX_SIZE_OF_BYTE_ARRAYS );
+      detail::assert_claimed_container_fits<Stream, char>( s, size.value );
       value.resize(size.value);
       if( value.size() )
         s.read( value.data(), value.size() );
@@ -449,6 +451,7 @@ namespace fc {
     inline void unpack( Stream& s, std::unordered_set<T>& value ) {
       unsigned_int size; fc::raw::unpack( s, size );
       FC_ASSERT( size.value <= MAX_NUM_ARRAY_ELEMENTS );
+      detail::assert_claimed_container_fits<Stream, T>( s, size.value );
       value.clear();
       value.reserve(size.value);
       for( uint32_t i = 0; i < size.value; ++i )
@@ -498,6 +501,7 @@ namespace fc {
     {
       unsigned_int size; fc::raw::unpack( s, size );
       FC_ASSERT( size.value <= MAX_NUM_ARRAY_ELEMENTS );
+      detail::assert_claimed_container_fits<Stream, std::pair<K,V>>( s, size.value );
       value.clear();
       value.reserve(size.value);
       for( uint32_t i = 0; i < size.value; ++i )
@@ -545,6 +549,7 @@ namespace fc {
     inline void unpack( Stream& s, std::deque<T>& value ) {
       unsigned_int size; fc::raw::unpack( s, size );
       FC_ASSERT( size.value <= MAX_NUM_ARRAY_ELEMENTS );
+      detail::assert_claimed_container_fits<Stream, T>( s, size.value );
       value.resize(size.value);
       for( auto& i : value ) {
          fc::raw::unpack( s, i );
@@ -565,6 +570,7 @@ namespace fc {
        unsigned_int size;
        fc::raw::unpack( s, size );
        FC_ASSERT( size.value <= MAX_NUM_ARRAY_ELEMENTS );
+       detail::assert_claimed_container_fits<Stream, T>( s, size.value );
        value.resize( size.value );
        for( auto& i : value ) {
           fc::raw::unpack( s, i );
@@ -596,6 +602,7 @@ namespace fc {
       constexpr size_t word_size = sizeof(fc::dynamic_bitset::block_type) * CHAR_BIT;
       size_t num_blocks = (size + word_size - 1) / word_size;
       FC_ASSERT( num_blocks <= MAX_NUM_ARRAY_ELEMENTS );
+      detail::assert_claimed_container_fits<Stream, fc::dynamic_bitset::block_type>( s, num_blocks );
       std::vector<fc::dynamic_bitset::block_type> blocks(num_blocks);
       for( size_t i = 0; i < num_blocks; ++i ) {
          fc::raw::unpack( s, blocks[i] );
@@ -617,6 +624,7 @@ namespace fc {
     inline void unpack( Stream& s, std::vector<T>& value ) {
       unsigned_int size; fc::raw::unpack( s, size );
       FC_ASSERT( size.value <= MAX_NUM_ARRAY_ELEMENTS );
+      detail::assert_claimed_container_fits<Stream, T>( s, size.value );
       value.resize(size.value);
       for( auto& i : value ) {
          fc::raw::unpack( s, i );

@@ -17,7 +17,7 @@ This procedure creates a database containing the chain state, with full history 
 1. Enable the `producer_api_plugin` on a node with full state-history.
 
 [[caution | Caution when using `producer_api_plugin`]]
-| Either use a firewall to block access to `http-server-address`, or change it to `localhost:8888` to disable remote access.
+| Producer/snapshot RPCs are unauthenticated. Keep `http-server-address` on loopback (`localhost:8888`, the default) or a UNIX socket. Non-loopback exposure is refused unless you pass `--http-expose-nonloopback-producer-api`. Do not combine a public CORS origin with those APIs unless you also pass `--http-allow-control-plane-cors`.
 
 2. Create a portable snapshot:
 ```sh

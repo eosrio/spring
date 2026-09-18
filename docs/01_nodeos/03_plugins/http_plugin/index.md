@@ -65,7 +65,17 @@ Config Options for eosio::http_plugin:
   --http-keep-alive arg (=1)            If set to false, do not keep HTTP
                                         connections alive, even if client
                                         requests.
+  --http-allow-control-plane-cors       Allow Access-Control-Allow-Origin to be
+                                        configured while an unauthenticated
+                                        control-plane API (producer_rw,
+                                        snapshot) is bound to a non-loopback
+                                        address. Without this flag that
+                                        combination is refused.
 ```
+
+`access-control-allow-origin=*` cannot be combined with
+`access-control-allow-credentials=true`; `http_plugin` refuses that pair at
+startup.
 
 ## Dependencies
 

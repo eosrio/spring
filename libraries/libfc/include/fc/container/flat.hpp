@@ -2,6 +2,7 @@
 
 #include <fc/container/flat_fwd.hpp>
 #include <fc/container/container_detail.hpp>
+#include <fc/io/raw_unpack_bounds.hpp>
 #include <boost/container/flat_map.hpp>
 #include <boost/container/flat_set.hpp>
 #include <fc/crypto/hex.hpp>
@@ -28,6 +29,7 @@ namespace fc {
          unsigned_int size;
          unpack( s, size );
          FC_ASSERT( size.value <= MAX_NUM_ARRAY_ELEMENTS );
+         detail::assert_claimed_container_fits<Stream, T>( s, size.value );
          value.clear();
          value.resize( size.value );
          if( !std::is_fundamental<T>::value ) {
@@ -52,6 +54,7 @@ namespace fc {
          unsigned_int size;
          unpack( s, size );
          FC_ASSERT( size.value <= MAX_SIZE_OF_BYTE_ARRAYS );
+         detail::assert_claimed_container_fits<Stream, char>( s, size.value );
          value.clear();
          value.resize( size.value );
          if( value.size() )
