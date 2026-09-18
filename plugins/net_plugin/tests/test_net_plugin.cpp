@@ -741,7 +741,7 @@ BOOST_AUTO_TEST_CASE(test_notice_message_huge_ids_claim_short_frame) {
    auto                  raw_ds = mb.create_datastream();
    fc::bounded_datastream bds(raw_ds, read_len);
    eosio::notice_message  evil;
-   BOOST_CHECK_THROW(fc::raw::unpack(bds, evil), fc::assert_exception);
+   BOOST_CHECK_THROW(fc::raw::unpack(bds, evil), fc::out_of_range_exception);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

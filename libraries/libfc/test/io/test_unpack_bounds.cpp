@@ -61,7 +61,7 @@ BOOST_AUTO_TEST_CASE(vector_sha256_huge_claim_on_short_stream_fails_without_larg
 
    datastream<const char*> ds(payload.data(), payload.size());
    std::vector<sha256>     ids;
-   BOOST_CHECK_THROW(fc::raw::unpack(ds, ids), fc::assert_exception);
+   BOOST_CHECK_THROW(fc::raw::unpack(ds, ids), fc::out_of_range_exception);
 
    const auto elapsed = std::chrono::steady_clock::now() - t0;
    BOOST_CHECK_LT(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count(), 200);
@@ -84,7 +84,7 @@ BOOST_AUTO_TEST_CASE(vector_char_huge_claim_on_short_stream_fails_without_large_
 
    datastream<const char*> ds(payload.data(), payload.size());
    std::vector<char>       bytes;
-   BOOST_CHECK_THROW(fc::raw::unpack(ds, bytes), fc::assert_exception);
+   BOOST_CHECK_THROW(fc::raw::unpack(ds, bytes), fc::out_of_range_exception);
 
 #ifdef __linux__
    const uint64_t rss_after = current_vm_rss_kb();
@@ -107,7 +107,7 @@ BOOST_AUTO_TEST_CASE(vector_uint32_valid_and_truncated_payload) {
    packed.resize(packed.size() - 4);
    datastream<const char*> ds(packed.data(), packed.size());
    std::vector<uint32_t>   out;
-   BOOST_CHECK_THROW(fc::raw::unpack(ds, out), fc::assert_exception);
+   BOOST_CHECK_THROW(fc::raw::unpack(ds, out), fc::out_of_range_exception);
 }
 
 BOOST_AUTO_TEST_CASE(vector_string_huge_claim_uses_min_element_size) {
@@ -115,7 +115,7 @@ BOOST_AUTO_TEST_CASE(vector_string_huge_claim_uses_min_element_size) {
    append_unsigned_int(payload, MAX_NUM_ARRAY_ELEMENTS);
    datastream<const char*>  ds(payload.data(), payload.size());
    std::vector<std::string> strings;
-   BOOST_CHECK_THROW(fc::raw::unpack(ds, strings), fc::assert_exception);
+   BOOST_CHECK_THROW(fc::raw::unpack(ds, strings), fc::out_of_range_exception);
 }
 
 BOOST_AUTO_TEST_CASE(deque_and_flat_vector_huge_claim) {
@@ -125,12 +125,12 @@ BOOST_AUTO_TEST_CASE(deque_and_flat_vector_huge_claim) {
    {
       datastream<const char*> ds(payload.data(), payload.size());
       std::deque<sha256>      q;
-      BOOST_CHECK_THROW(fc::raw::unpack(ds, q), fc::assert_exception);
+      BOOST_CHECK_THROW(fc::raw::unpack(ds, q), fc::out_of_range_exception);
    }
    {
       datastream<const char*>          ds(payload.data(), payload.size());
       boost::container::vector<sha256> v;
-      BOOST_CHECK_THROW(fc::raw::unpack(ds, v), fc::assert_exception);
+      BOOST_CHECK_THROW(fc::raw::unpack(ds, v), fc::out_of_range_exception);
    }
 }
 
@@ -162,7 +162,7 @@ BOOST_AUTO_TEST_CASE(bounded_datastream_notice_like_short_frame) {
    datastream<const char*> raw_ds(frame, crafted);
    bounded_datastream      bds(raw_ds, crafted);
    notice_select_ids       evil;
-   BOOST_CHECK_THROW(fc::raw::unpack(bds, evil), fc::assert_exception);
+   BOOST_CHECK_THROW(fc::raw::unpack(bds, evil), fc::out_of_range_exception);
 
 #ifdef __linux__
    const uint64_t rss_after = current_vm_rss_kb();

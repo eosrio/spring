@@ -65,9 +65,13 @@ namespace fc { namespace raw { namespace detail {
          const uint64_t min_elem = default_instance_packed_size<T>();
          if (min_elem == 0)
             return;
-         FC_ASSERT(count <= rem / min_elem,
-                   "claimed container size ${c} exceeds remaining stream (${r} bytes, min ${m} per element)",
-                   ("c", count)("r", rem)("m", min_elem));
+         if (count > rem / min_elem) {
+            // Same exception as a short-read so existing unpack tests and
+            // call sites that catch out_of_range_exception keep working.
+            FC_THROW_EXCEPTION(out_of_range_exception,
+                               "claimed container size ${c} exceeds remaining stream (${r} bytes, min ${m} per element)",
+                               ("c", count)("r", rem)("m", min_elem));
+         }
       }
    }
 

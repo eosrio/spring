@@ -475,8 +475,19 @@ namespace eosio {
          }
          my->plugin_state->server_header = current_http_plugin_defaults.server_header;
 
-         const bool cors_wildcard = my->plugin_state->access_control_allow_origin == "*";
-         EOS_ASSERT(!(cors_wildcard && my->plugin_state->access_control_allow_credentials),
+         // Read CORS from the variables_map. Option notifiers may run after
+         // plugin_initialize, so plugin_state may still be empty here.
+         std::string cors_origin;
+         if (options.count("access-control-allow-origin"))
+            cors_origin = options.at("access-control-allow-origin").as<string>();
+         const bool cors_credentials = options.count("access-control-allow-credentials") &&
+                                       options.at("access-control-allow-credentials").as<bool>();
+         if (!cors_origin.empty())
+            my->plugin_state->access_control_allow_origin = cors_origin;
+         my->plugin_state->access_control_allow_credentials =
+               my->plugin_state->access_control_allow_credentials || cors_credentials;
+
+         EOS_ASSERT(!(cors_origin == "*" && cors_credentials),
                     chain::plugin_config_exception,
                     "access-control-allow-origin=* cannot be combined with access-control-allow-credentials=true "
                     "(browsers treat this as an invalid CORS configuration and it amplifies CSRF risk)");
